@@ -30,6 +30,7 @@ local function publish(current)
       nodes = current.nodes,
       results = current.results,
       format = config.lens.format,
+      label = config.lens.label,
       position = config.lens.position,
       scope = config.lens.scope,
       filter = config.lens.filter,
@@ -315,7 +316,7 @@ function M.loclist(opts)
   open_list({ kind = 'loclist', win = win, buf = vim.api.nvim_win_get_buf(win) }, opts.toggle)
 end
 
----启用函数上方的引用虚拟行，并刷新当前文档
+---启用引用计数提示（默认定义行末，可配 above），并刷新当前文档
 function M.enable_lens()
   lens_enabled = true
   if not enabled then M.enable() end
@@ -333,6 +334,40 @@ function M.disable_lens()
   end
 end
 
+--- 查询某行定义符号的引用计数 chunks，供 ufo 折叠行等外部渲染复用
+--- 折叠时 eol 幽灵文本被折叠插件接管，需由调用方把计数拼进折起行
+---@param buf? integer 缺省当前 buffer
+---@param lnum integer 1-based 行号
+---@return table? chunks {{text, hl}, ...}；无可展示结果时返回 nil
+function M.reference_chunks(buf, lnum)
+  if type(lnum) ~= 'number' or lnum < 1 or lnum % 1 ~= 0 then return nil end
+  buf = buf or source_buffer()
+  if type(buf) ~= 'number' or not vim.api.nvim_buf_is_valid(buf) then return nil end
+  local current = session
+  if not current or current.buf ~= buf or type(current.nodes) ~= 'table' then return nil end
+
+  local ok_uri, uri = pcall(vim.uri_from_bufnr, buf)
+  if not ok_uri or not uri then return nil end
+
+  local row = lnum - 1
+  for _, node in ipairs(Model.flatten(current.nodes)) do
+    local start = node.range and node.range.start
+    if
+      start
+      and start.line == row
+      and node.uri == uri
+      and Lens.matches(node, config.lens)
+    then
+      local result = current.results[node.id]
+      if type(result) == 'table' and result.status == 'ready' then
+        return Lens.count_chunks(result, config.lens.label)
+      end
+      return nil
+    end
+  end
+  return nil
+end
+
 ---启用事件订阅，幂等；不注册全局快捷键
 function M.enable()
   if enabled then return end
@@ -342,12 +377,36 @@ function M.enable()
     VVSymbolsKind = { link = 'Type' },
     VVSymbolsLens = { link = 'Comment' },
     VVSymbolsReferenceIcon = { link = 'Special' },
-    VVSymbolsReferenceMatch = { underline = true },
+    -- 列表内引用范围不再加视觉标记（下划线只保留在 preview 侧）
+    VVSymbolsReferenceMatch = {},
     VVSymbolsReferenceCount = { link = 'VVSymbolsReferenceIcon' },
     VVSymbolsZeroReferences = { link = 'DiagnosticError' },
+    -- 匹配段整段染色（fg+bold+同色下划线）：颜色运行时取主题 @keyword 的 fg（见 apply_preview_hl）
     VVSymbolsPreview = { bold = true, underline = true },
   })
+
+  -- preview 匹配色跟随主题关键字色，不写死色值；两处兜底链均失效时才用内置黄
+  local function keyword_fg()
+    for _, name in ipairs({ '@keyword', 'Keyword' }) do
+      local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = name, link = true })
+      if ok and type(hl) == 'table' and hl.fg then return hl.fg end
+    end
+    return nil
+  end
+
+  local function apply_preview_hl()
+    local fg = keyword_fg() or '#e5c07b'
+    vim.api.nvim_set_hl(0, 'VVSymbolsPreview', {
+      bold = true,
+      fg = fg,
+      underline = true,
+      sp = fg,
+    })
+  end
+
+  apply_preview_hl()
   group = vim.api.nvim_create_augroup('VVSymbols', { clear = true })
+  vim.api.nvim_create_autocmd('ColorScheme', { group = group, callback = apply_preview_hl })
   local function follow(ev)
     local buf = ev.buf
     vim.schedule(function()

@@ -81,7 +81,8 @@ local function parser_language(buf)
   end
 
   if filetype == 'typescriptreact' or filetype == 'tsx' then return 'tsx' end
-  if filetype == 'typescript' then return 'typescript' end
+  if filetype == 'javascriptreact' or filetype == 'jsx' then return 'javascript' end
+  if filetype == 'typescript' or filetype == 'javascript' then return filetype end
   return nil
 end
 
@@ -98,6 +99,7 @@ local function contains_child(parent, target)
 end
 
 local transparent_wrappers = {
+  arguments = true,  -- 调用参数层；能否穿透由上层 call_expression 的 transparent_call 决定
   as_expression = true,
   non_null_expression = true,
   parenthesized_expression = true,
@@ -112,10 +114,24 @@ local callable_owners = {
   variable_declarator = 'name',
 }
 
-local function callable_owner(arrow)
-  local child = arrow
-  local parent = arrow:parent()
-  while parent and transparent_wrappers[parent:type()] and contains_child(parent, child) do
+--- 具名函数调用（如 memo/forwardRef/create）对箭头/函数表达式透明：
+--- 其返回值几乎总是可调用。方法调用（list.map(...)）不透明，避免把
+--- 数组/普通值变量误标为可调用。启发式边界：setTimeout/Array.isArray 等
+--- 返回非函数的裸标识符调用无法与 memo 区分，会被视为可调用
+local function transparent_call(node)
+  if node:type() ~= 'call_expression' then return false end
+  local callee = first_field(node, 'function')
+  return callee ~= nil and callee:type() == 'identifier'
+end
+
+local function callable_owner(callable)
+  local child = callable
+  local parent = callable:parent()
+  while
+    parent
+    and (transparent_wrappers[parent:type()] or transparent_call(parent))
+    and contains_child(parent, child)
+  do
     child = parent
     parent = parent:parent()
   end
@@ -138,13 +154,13 @@ local function arrow_callable_candidates(buf, encoding)
   local ok_tree, trees = pcall(parser.parse, parser)
   if not ok_tree or not trees or not trees[1] then return {} end
 
-  local ok_query, query = pcall(vim.treesitter.query.parse, language, '(arrow_function) @arrow')
+  local ok_query, query = pcall(vim.treesitter.query.parse, language, '[(arrow_function) (function_expression)] @callable')
   if not ok_query or not query then return {} end
 
   local candidates = {}
   local root = trees[1]:root()
-  for _, arrow in query:iter_captures(root, buf, 0, -1) do
-    local name_node = callable_owner(arrow)
+  for _, callable in query:iter_captures(root, buf, 0, -1) do
+    local name_node = callable_owner(callable)
     if name_node then
       local start_line, start_col, end_line, end_col = name_node:range()
       local name = vim.treesitter.get_node_text(name_node, buf)
@@ -196,9 +212,13 @@ local function callable_from_arrow(candidates, name, selection_range, buf, encod
   return false
 end
 
-local function is_builtin_callable(kind) return kind == 'Function' or kind == 'Method' or kind == 'Constructor' end
+-- JS/TS 中 class 通过 new 调用，导出类是模块 API 入口，与函数一样参与引用查询；
+-- 类内部方法是否算导出由 exported 单独决定（不算，见 exports.lua）
+local function is_builtin_callable(kind)
+  return kind == 'Function' or kind == 'Method' or kind == 'Constructor' or kind == 'Class'
+end
 
-local function normalize_symbol(symbol, opts, source_uri, arrow_candidates, symbol_information)
+local function normalize_symbol(symbol, opts, source_uri, arrow_candidates, symbol_information, top_level)
   local location = symbol_information and symbol.location or nil
   local raw_range = location and location.range or symbol.range
   local range = range_value(raw_range)
@@ -228,11 +248,14 @@ local function normalize_symbol(symbol, opts, source_uri, arrow_candidates, symb
     children = {},
     is_callable = is_callable == true,
     exported = false,
+    -- 语言无导出识别时，顶层可调用符号由 lens 按模块 API 处理（见 Lens.matches）
+    top_level = top_level == true,
+    export_undetected = opts.export_undetected == true,
   }
 
   if not symbol_information then
     for _, child in ipairs(symbol.children or {}) do
-      node.children[#node.children + 1] = normalize_symbol(child, opts, source_uri, arrow_candidates, false)
+      node.children[#node.children + 1] = normalize_symbol(child, opts, source_uri, arrow_candidates, false, false)
     end
   end
 
@@ -247,12 +270,13 @@ function M.normalize(opts)
   local symbols = type(opts.symbols) == 'table' and opts.symbols or {}
   local source_uri = opts.uri or buffer_uri(opts.buf)
   local arrow_candidates = arrow_callable_candidates(opts.buf, opts.encoding)
+  opts.export_undetected = not Exports.detects(opts.buf)
   local roots = {}
 
   for _, symbol in ipairs(symbols) do
     if type(symbol) == 'table' then
       local symbol_information = type(symbol.location) == 'table'
-      roots[#roots + 1] = normalize_symbol(symbol, opts, source_uri, arrow_candidates, symbol_information)
+      roots[#roots + 1] = normalize_symbol(symbol, opts, source_uri, arrow_candidates, symbol_information, true)
     end
   end
 

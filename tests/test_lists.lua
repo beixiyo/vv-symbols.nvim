@@ -25,25 +25,25 @@ local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
 assert(text:find('vv-symbols-list-main.ts', 1, true) and text:find('consume(localValue)', 1, true), text)
 
 local location_ns = vim.api.nvim_get_namespaces()['vv-symbols.locations']
-assert(location_ns, 'location lists should own a cursor extmark namespace')
+assert(location_ns, '位置列表应持有光标 extmark 命名空间')
 local tracked = vim.api.nvim_buf_get_extmarks(source, location_ns, 0, -1, { details = true })
-assert(#tracked == 1 and tracked[1][2] == 1 and tracked[1][3] == 9, 'source cursor should be tracked by byte position')
+assert(#tracked == 1 and tracked[1][2] == 1 and tracked[1][3] == 9, '源码光标应按字节位置跟踪')
 
 plugin.refresh()
 local shifted_request = pending[#pending]
 vim.api.nvim_buf_set_lines(source, 0, 0, false, { '// shifted source' })
 vim.api.nvim_exec_autocmds('TextChanged', { buffer = source })
 tracked = vim.api.nvim_buf_get_extmarks(source, location_ns, 0, -1, { details = true })
-assert(#tracked == 1 and tracked[1][2] == 2, 'inserting a line should move the tracked cursor')
+assert(#tracked == 1 and tracked[1][2] == 2, '插入行应同步移动跟踪的光标')
 shifted_request.callback(nil, { locations = {}, encoding = 'utf-16' })
 text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
-assert(text:find('Source changed', 1, true), 'an obsolete location response must not replace stale state')
+assert(text:find('Source changed', 1, true), '过期位置响应不得覆盖现有状态')
 
 local request_count = #pending
 plugin.refresh()
 assert(
   #pending == request_count + 1 and pending[#pending].opts.cursor.line == 2,
-  'explicit refresh should query the moved source cursor'
+  '显式刷新应查询移动后的源码光标'
 )
 local shifted_range = { start = { line = 2, character = 8 }, ['end'] = { line = 2, character = 18 } }
 pending[#pending].callback(
@@ -51,7 +51,7 @@ pending[#pending].callback(
   { locations = { { uri = vim.uri_from_bufnr(source), range = shifted_range } }, encoding = 'utf-16' }
 )
 text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
-assert(text:find('consume(localValue)', 1, true), 'a refreshed location response should restore the list')
+assert(text:find('consume(localValue)', 1, true), '刷新后的位置响应应恢复列表')
 
 local target = vim.api.nvim_create_buf(true, false)
 vim.api.nvim_buf_set_name(target, '/tmp/vv-symbols-list-target.ts')
@@ -65,22 +65,22 @@ target_request.callback(
 vim.api.nvim_exec_autocmds('TextChanged', { buffer = target })
 assert(
   table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n'):find('Source changed', 1, true),
-  'changing a target file should invalidate the location list'
+  '目标文件变更应使位置列表失效'
 )
 request_count = #pending
 plugin.refresh()
 assert(
   #pending == request_count + 1 and pending[#pending].opts.cursor.line == 2,
-  'refresh after a target change should reuse the original source cursor'
+  '目标变更后的刷新应复用原源码光标'
 )
 pending[#pending].callback(nil, { locations = {}, encoding = 'utf-16' })
 
 plugin.close()
 assert(
   #vim.api.nvim_buf_get_extmarks(source, location_ns, 0, -1, {}) == 0,
-  'closing a list should clear its cursor mark'
+  '关闭列表应清除其光标标记'
 )
-assert(not plugin.is_open() and cancelled > 0, 'close cancels and cannot reopen')
+assert(not plugin.is_open() and cancelled > 0, '关闭应取消请求且不可再打开')
 
 local ns = vim.api.nvim_create_namespace('vv-symbols-list-test')
 vim.diagnostic.set(ns, source, { { lnum = 0, col = 6, end_col = 16, severity = 1, message = 'Example error' } })
@@ -96,7 +96,7 @@ assert(
       return not table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n'):find('Example error', 1, true)
     end
   ),
-  'diagnostic list should refresh'
+  '诊断列表应刷新'
 )
 vim.fn.setqflist(
   {},
@@ -116,8 +116,8 @@ for line, value in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
   end
 end
 vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<CR>', true, false, true), 'xt', false)
-assert(vim.api.nvim_get_current_buf() == source, 'quickfix jump must use the source window')
-assert(vim.deep_equal(vim.api.nvim_win_get_cursor(0), { 2, 8 }), 'quickfix columns are one-based bytes')
+assert(vim.api.nvim_get_current_buf() == source, 'quickfix 跳转应使用源码窗口')
+assert(vim.deep_equal(vim.api.nvim_win_get_cursor(0), { 2, 8 }), 'quickfix 列为 1 起始字节列')
 local source_win = vim.api.nvim_get_current_win()
 vim.fn.setloclist(source_win, {}, 'r', { items = { { bufnr = source, lnum = 1, col = 7, text = 'window location' } } })
 plugin.loclist({ win = source_win })
@@ -130,13 +130,13 @@ local stale = pending[#pending]
 vim.api.nvim_buf_set_lines(source, 0, 0, false, { '// shifted source' })
 stale.callback(nil, { locations = { { uri = vim.uri_from_bufnr(source), range = range } }, encoding = 'utf-16' })
 text = table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false), '\n')
-assert(text:find('Source changed', 1, true), 'changed snapshot cannot publish outdated positions')
+assert(text:find('Source changed', 1, true), '快照变更后不得发布过期位置')
 vim.api.nvim_set_current_win(source_win)
 vim.cmd('split')
 local owner_win = vim.api.nvim_get_current_win()
 vim.fn.setloclist(owner_win, {}, 'r', { items = { { bufnr = source, lnum = 1, col = 7, text = 'owner test' } } })
 plugin.loclist({ win = owner_win })
 vim.api.nvim_win_close(owner_win, true)
-assert(pcall(plugin.refresh), 'refresh with an invalid loclist owner must not throw')
+assert(pcall(plugin.refresh), 'loclist 属主窗口失效时刷新不得抛错')
 plugin.disable()
-print('PASS caret locations, diagnostics, quickfix and cancellation')
+print('PASS 光标位置查询、诊断、quickfix 与取消')

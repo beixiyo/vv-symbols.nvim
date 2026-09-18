@@ -19,10 +19,11 @@ vv-symbols 将符号、引用、定义、实现、诊断、quickfix 和 loclist 
 
 ## 功能
 
-- 符号树支持名称与类型筛选，可快速切换为仅显示函数
+- 符号树支持名称与类型筛选，可快速切换为仅显示函数（类也算可调用）
 - 位置列表按文件分组，自动压缩长路径、去除代码两侧空白，保留 Tree-sitter 语法高亮
 - 移动列表光标实时预览源码，确认跳转或退出时恢复原位置
-- 源码中显示引用数量，可放在符号上方或行末；默认只显示导出的函数
+- 源码中显示引用数量，可放在符号上方或行末；默认只显示导出的可调用符号（函数、经 `new` 调用的导出类等）
+- 导出识别覆盖 `export function/class/const`、再导出子句与默认导出。导出类本身计入引用目标（通过 `new` 调用），类成员属于类内部 API，不算模块导出；变量赋值的箭头函数与函数表达式均可识别，包括 `memo(() => …)` 这类具名调用包装（方法调用如 `list.map(() => …)` 不算）
 - 固定底部快捷键提示，支持方向键、折叠操作和 `g?` 帮助
 
 ## 安装与配置
@@ -54,8 +55,10 @@ return {
       },
       lens = {
         enabled = true,      -- 显示引用计数；关闭后停止自动引用查询
-        scope = 'exported',  -- 'exported' / 'all'；导出识别支持 JS/TS/TSX
-        position = 'above',  -- 'above' 符号上方 / 'eol' 定义行末
+        scope = 'exported',  -- 'exported' / 'all'；导出识别支持 JS/TS/TSX，
+                            --   其它语言顶层可调用符号视为模块 API（如 Lua 的 local 函数也会计入）
+        position = 'eol',    -- 'eol' 定义行末 / 'above' 符号上方虚拟行
+        label = 'refs',      -- 计数标签文案，或 fun(count) 处理单复数；lens 与面板共用
         -- filter = function(node) return node.name ~= 'internal' end,
         -- filter 在 scope 之后追加筛选；其他语言可搭配 scope = 'all'
       },
@@ -87,6 +90,20 @@ return {
 ```
 
 图标与引用数字使用主题的 `Special` 颜色，零引用使用 `DiagnosticError`。`0 references` 表示 LSP 未找到引用，不代表代码可以安全删除；`…` 表示查询中，`?` 表示查询失败或超时
+
+### 折叠行上的引用计数（nvim-ufo）
+
+折起行由折叠插件接管渲染，行末计数会随折叠消失。可通过公共查询自行拼回折起行：
+
+```lua
+require('vv-symbols').reference_chunks(buf, lnum)
+-- ready 结果返回 { {图标, 'VVSymbolsReferenceIcon'}, {数字, 'VVSymbolsReferenceCount'}, {' refs', 'VVSymbolsLens'} }
+-- 其它状态返回 nil
+```
+
+nvim-ufo 用户可配置 `fold_virt_text_handler` 拼接 chunks（ufo 更新循环会重渲染已闭合折叠行，迟到的计数会自动刷新）
+完整可用的 handler 见我的 dotfiles：
+[`.config/nvim/lua/plugins/specs/ui/ufo.lua`](https://github.com/beixiyo/dotfiles/blob/main/.config/nvim/lua/plugins/specs/ui/ufo.lua)
 
 ## 面板操作
 

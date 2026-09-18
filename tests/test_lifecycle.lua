@@ -25,7 +25,7 @@ local b = vim.api.nvim_create_buf(true, false)
 vim.api.nvim_buf_set_name(b, '/tmp/vv-symbols-lifecycle-b.lua')
 vim.api.nvim_buf_set_lines(b, 0, -1, false, { 'local function new() end' })
 plugin.open({ buf = b })
-assert(cancelled >= 1, 'switch must physically cancel old request')
+assert(cancelled >= 1, '切源必须物理取消旧请求')
 local function reply(req, name)
   local range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 23 } }
   req.cb(nil, {
@@ -46,19 +46,19 @@ reply(requests[#requests], 'new')
 local namespace = vim.api.nvim_create_namespace('vv-symbols.lens')
 assert(
   vim.wait(100, function() return #vim.api.nvim_buf_get_extmarks(b, namespace, 0, -1, {}) == 1 end),
-  'successful current result should render a lens'
+  '当前成功结果应渲染 lens'
 )
 vim.api.nvim_buf_set_lines(b, 0, -1, false, { 'local function changed() end' })
 vim.api.nvim_exec_autocmds('TextChanged', { buffer = b })
-assert(#vim.api.nvim_buf_get_extmarks(b, namespace, 0, -1, {}) == 0, 'edit immediately invalidates old lens')
+assert(#vim.api.nvim_buf_get_extmarks(b, namespace, 0, -1, {}) == 0, '编辑应立即失效旧 lens')
 plugin.disable_lens()
 plugin.refresh()
 local pending = requests[#requests]
 plugin.close()
 reply(pending, 'late')
 vim.wait(60, function() return false end)
-assert(not plugin.is_open(), 'late result must not reopen panel')
-assert(not vim.api.nvim_buf_is_valid(panel_buf), 'panel is wiped')
+assert(not plugin.is_open(), '迟到结果不得重新打开面板')
+assert(not vim.api.nvim_buf_is_valid(panel_buf), '面板已被销毁')
 plugin.disable()
 plugin.disable()
-print('PASS session cancellation and late callbacks')
+print('PASS 切源取消与迟到回调')

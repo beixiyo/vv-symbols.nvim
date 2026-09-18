@@ -44,37 +44,37 @@ local function open()
       end,
       5
     ),
-    'moving over a reference must preview another file in the source window'
+    '光标移到引用上应在源码窗口预览另一文件'
   )
-  assert(vim.api.nvim_get_current_win() == panel_win, 'preview must retain sidebar focus')
+  assert(vim.api.nvim_get_current_win() == panel_win, '预览时焦点应保留在侧栏')
   return view
 end
 for _, cancel in ipairs({ 'q', '<Esc>' }) do
   local view = open()
   key(cancel)
   assert(not view:is_open() and vim.api.nvim_get_current_win() == source_win)
-  assert(vim.api.nvim_win_get_buf(source_win) == source, 'cancel restores the original file')
+  assert(vim.api.nvim_win_get_buf(source_win) == source, '取消应恢复原文件')
   local restored = vim.fn.winsaveview()
   assert(
     restored.lnum == original.lnum and restored.col == original.col and restored.topline == original.topline,
-    'cancel restores original cursor and viewport'
+    '取消应恢复原光标与视口'
   )
 end
 local view = open()
 key('<CR>')
-assert(view:is_open() and vim.api.nvim_get_current_win() == source_win, 'Enter enters source and keeps sidebar')
+assert(view:is_open() and vim.api.nvim_get_current_win() == source_win, 'Enter 进入源码且保留侧栏')
 assert(vim.api.nvim_win_get_buf(source_win) == target)
 vim.wait(120, function() return false end)
-assert(vim.api.nvim_win_get_buf(source_win) == target, 'queued preview cannot undo Enter')
+assert(vim.api.nvim_win_get_buf(source_win) == target, '排队中的预览不得撤销 Enter')
 vim.api.nvim_set_current_win(view.tree.win)
 key('q')
-assert(vim.api.nvim_win_get_buf(source_win) == target, 'closing after Enter preserves the confirmed location')
+assert(vim.api.nvim_win_get_buf(source_win) == target, 'Enter 后关闭应保留已确认位置')
 vim.api.nvim_win_set_buf(source_win, source)
 vim.fn.winrestview(original)
 view = open()
 key('gf')
-assert(not view:is_open() and vim.api.nvim_get_current_win() == source_win, 'gf enters source and closes sidebar')
+assert(not view:is_open() and vim.api.nvim_get_current_win() == source_win, 'gf 进入源码并关闭侧栏')
 assert(
   vim.api.nvim_win_get_buf(source_win) == target and vim.deep_equal(vim.api.nvim_win_get_cursor(source_win), { 2, 6 })
 )
-print('PASS cross-file preview, q/Esc restore, Enter commit and gf close')
+print('PASS 跨文件预览、q/Esc 恢复、Enter 确认与 gf 关闭')

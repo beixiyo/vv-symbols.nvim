@@ -1,4 +1,4 @@
--- Reproduce group headers consuming navigation steps and missing arrow actions.
+-- 回归：分组头不得消耗导航步数，方向键动作不可缺失
 local root = vim.fn.fnamemodify(debug.getinfo(1, 'S').source:sub(2), ':p:h:h')
 vim.opt.rtp:prepend(root)
 vim.opt.rtp:prepend(root .. '/../vv-utils.nvim')
@@ -31,28 +31,28 @@ view:open()
 local tree = view.tree
 local function key(value) vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(value, true, false, true), 'xt', false) end
 local function current() return tree.rows[vim.api.nvim_win_get_cursor(tree.win)[1]].node.id end
-assert(current() == groups[1].children[1].id, 'opening must focus the first result')
+assert(current() == groups[1].children[1].id, '打开后应聚焦第一个结果')
 key('j')
-assert(current() == groups[1].children[2].id, 'j must visit the next result')
+assert(current() == groups[1].children[2].id, 'j 应移动到下一个结果')
 key('<Down>')
-assert(current() == groups[2].children[1].id, 'Down must skip the next expanded file header')
+assert(current() == groups[2].children[1].id, 'Down 应跳过已展开的文件头')
 key('<Up>')
-assert(current() == groups[1].children[2].id, 'Up must skip the previous file header')
+assert(current() == groups[1].children[2].id, 'Up 应跳过上一个文件头')
 key('2j')
-assert(current() == groups[2].children[2].id, 'counts must count results, not group rows')
+assert(current() == groups[2].children[2].id, '计数只统计结果，不含分组行')
 key('<Left>')
-assert(current() == groups[2].id and tree.folded[groups[2].id], 'Left on a result must collapse its file')
+assert(current() == groups[2].id and tree.folded[groups[2].id], '结果上按 Left 应折叠其文件')
 key('k')
-assert(current() == groups[1].children[2].id, 'k must return to the previous result')
+assert(current() == groups[1].children[2].id, 'k 应返回上一个结果')
 key('j')
-assert(current() == groups[2].id, 'collapsed groups must stay reachable for expansion')
+assert(current() == groups[2].id, '折叠分组应仍可到达以便展开')
 key('<Right>')
 assert(
   current() == groups[2].children[1].id and not tree.folded[groups[2].id],
-  'Right must expand and enter the first result'
+  'Right 应展开并进入第一个结果'
 )
 key('<Right>')
-assert(vim.api.nvim_get_current_win() ~= tree.win, 'Right on a result must enter source')
-assert(vim.api.nvim_get_current_buf() == other, 'Right must open the selected file')
+assert(vim.api.nvim_get_current_win() ~= tree.win, '结果上按 Right 应进入源码')
+assert(vim.api.nvim_get_current_buf() == other, 'Right 应打开所选文件')
 view:close()
-print('PASS result navigation, counts, collapsed groups and arrow actions')
+print('PASS 结果导航、计数、折叠分组与方向键动作')

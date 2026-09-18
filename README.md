@@ -19,10 +19,15 @@ vv-symbols brings symbols, references, definitions, implementations, diagnostics
 
 ## Features
 
-- Filter the symbol tree by name and type, with a quick toggle for functions only.
+- Filter the symbol tree by name and type, with a quick toggle for functions only (classes count as callable).
 - Browse locations grouped by file, with shortened paths, trimmed code snippets, and Tree-sitter syntax highlighting.
 - Preview source as the list cursor moves, then confirm the jump or exit to restore the original position.
-- Display reference counts above symbols or at the end of their definition lines; exported functions only by default.
+- Display reference counts above symbols or at the end of their definition lines; exported callables only by default.
+- Export detection covers `export function/class/const`, re-export clauses and default exports. Exported classes count as
+reference targets themselves (invoked via `new`), while their members are class-internal API and never count as module
+exports; arrow functions and function expressions assigned to
+variables are recognized, including HOC-style identifier-call wrappers such as `memo(() => …)` (method calls like
+`list.map(() => …)` are not).
 - Keep shortcut hints fixed at the bottom, with arrow navigation, folding, and `g?` help.
 
 ## Installation and configuration
@@ -54,8 +59,10 @@ return {
       },
       lens = {
         enabled = true,      -- Show reference counts; disabling stops automatic queries
-        scope = 'exported',  -- 'exported' / 'all'; export detection supports JS/TS/TSX
-        position = 'above',  -- 'above' the symbol / 'eol' at the end of its definition line
+        scope = 'exported',  -- 'exported' / 'all'; export detection supports JS/TS/TSX.
+                            --   Languages without detection treat top-level callables as the module API
+        position = 'eol',    -- 'eol' at the end of its definition line / 'above' the symbol
+        label = 'refs',      -- Count label text, or fun(count) for singular/plural, shared by lens and panel
         -- filter = function(node) return node.name ~= 'internal' end,
         -- filter runs after scope; use scope = 'all' for custom rules in other languages
       },
@@ -88,6 +95,22 @@ return {
 
 Icons and reference counts use the theme's `Special` color; zero references use `DiagnosticError`. `0 references` means the LSP found no references, not that the code is safe to delete. `…` indicates a pending query, and `?` indicates failure or timeout.
 
+### Reference counts on folded lines (nvim-ufo)
+
+Folded lines are rendered by the folding plugin, so end-of-line counts disappear once a fold closes. Query them and
+append to the fold text yourself:
+
+```lua
+require('vv-symbols').reference_chunks(buf, lnum)
+-- ready 结果返回 { {icon, 'VVSymbolsReferenceIcon'}, {count, 'VVSymbolsReferenceCount'}, {' refs', 'VVSymbolsLens'} }
+-- 其它状态返回 nil
+```
+
+With nvim-ufo, pass a `fold_virt_text_handler` that appends the chunks (ufo re-renders closed folds on its update
+cycle, so late-arriving counts refresh automatically).
+A working handler lives in my dotfiles:
+[`.config/nvim/lua/plugins/specs/ui/ufo.lua`](https://github.com/beixiyo/dotfiles/blob/main/.config/nvim/lua/plugins/specs/ui/ufo.lua).
+
 ## Panel controls
 
 | Key | Action |
@@ -102,7 +125,7 @@ Icons and reference counts use the theme's `Special` color; zero references use 
 | `zR/zM` | Expand/collapse all |
 | `/` | Enter a filter |
 | `t` | Filter by symbol type, or by severity in diagnostics |
-| `F` | Toggle functions only/all types in the symbol tree |
+| `F` | Toggle functions only/all types in the symbol tree (classes count as callable) |
 | `R` | Show references to the selected symbol |
 | `Backspace` | Return to the symbol tree when references were opened from it |
 | `c` | Clear filters |

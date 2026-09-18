@@ -8,7 +8,7 @@ function M.normalize(opts)
   local config = vim.tbl_deep_extend('force', {
     panel = { width = 42, position = 'left', preview = true, state = false },
     filter = { mode = 'subseq', kinds = false, debounce_ms = 150 },
-    lens = { enabled = true, scope = 'exported', position = 'above' },
+    lens = { enabled = true, scope = 'exported', position = 'eol', label = 'refs' },
     locations = { jump_single_result = true },
     references = { concurrency = 4, max_symbols = 200, include_declaration = false },
     timing = { debounce_ms = 250, timeout_ms = 3000 },
@@ -63,6 +63,11 @@ function M.normalize(opts)
   assert(config.filter.kinds == false or type(config.filter.kinds) == 'table', 'filter.kinds must be a list or false')
   assert(config.lens.scope == 'exported' or config.lens.scope == 'all', 'invalid lens scope')
   assert(config.lens.position == 'above' or config.lens.position == 'eol', 'lens.position must be above or eol')
+  assert(
+    type(config.lens.label) == 'function'
+      or (type(config.lens.label) == 'string' and config.lens.label ~= ''),
+    'lens.label must be a non-empty string or a function'
+  )
   assert(type(config.locations.jump_single_result) == 'boolean', 'locations.jump_single_result must be boolean')
   assert(config.lens.filter == nil or type(config.lens.filter) == 'function', 'lens.filter must be a function')
   return config
@@ -74,7 +79,7 @@ return M
 ---@field locations {jump_single_result:boolean} LSP 位置查询仅一个结果时直接跳转 @default {jump_single_result=true}
 ---@field panel {width:integer, position:'left'|'right', preview:boolean, state:false|VVStateHandle} 默认 width=42, position='left', preview=true, state=false；state 为调用方注入的宽度持久句柄
 ---@field filter {mode:'subseq'|'fixed'|'regex', kinds:false|string[], debounce_ms:integer} 默认 mode='subseq', kinds=false（全部）, debounce_ms=150；Function 包含识别出的可调用符号
----@field lens {enabled:boolean, scope:'exported'|'all', position:'above'|'eol', filter?:fun(node:table):boolean, format?:fun(node:table,result:table):string} 默认 enabled=true, scope='exported', position='above'；filter 是在 callable 与 scope 判断之后追加的包含条件
+---@field lens {enabled:boolean, scope:'exported'|'all', position:'above'|'eol', label:string|fun(count:integer?):string, filter?:fun(node:table):boolean, format?:fun(node:table,result:table):string} 默认 enabled=true, scope='exported', position='eol', label='refs'；label 函数形态可按 count 处理单复数；filter 是在 callable 与 scope 判断之后追加的包含条件
 ---@field references {concurrency:integer,max_symbols:integer,include_declaration:boolean} 默认 concurrency=4, max_symbols=200, include_declaration=false
 ---@field timing {debounce_ms:integer,timeout_ms:integer} 默认 debounce_ms=250, timeout_ms=3000
 ---@field max_lines integer 自动分析的文档行数上限 @default 5000

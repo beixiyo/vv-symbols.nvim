@@ -1,4 +1,4 @@
--- Behaviour tests for vv-symbols LSP requests.
+-- vv-symbols LSP 请求行为测试
 
 local source = debug.getinfo(1, 'S').source:sub(2)
 local root = vim.fn.fnamemodify(source, ':p:h:h')
@@ -9,7 +9,7 @@ vim.opt.runtimepath:prepend(utils_root)
 local Lsp = require('vv-symbols.lsp')
 
 local function wait_for(predicate, timeout)
-  assert(vim.wait(timeout or 200, predicate, 5), 'timed out waiting for async callback')
+  assert(vim.wait(timeout or 200, predicate, 5), '等待异步回调超时')
 end
 
 local function with_clients(clients, callback)
@@ -43,7 +43,7 @@ do
   with_clients({ first, second }, function()
     local result
     Lsp.symbols({ buf = 0, timeout_ms = 100 }, function(err, value) result = { err = err, value = value } end)
-    assert(#second.requests == 1 and #first.requests == 0, 'symbols must choose the lowest client id')
+    assert(#second.requests == 1 and #first.requests == 0, 'symbols 应选择最小 client id')
     second.requests[1].handler(nil, { { name = 'root' } })
     wait_for(function() return result ~= nil end)
     assert(result.err == nil and result.value.client_id == 3)
@@ -57,10 +57,10 @@ do
   with_clients({ selected, other }, function()
     local result
     Lsp.symbols({ buf = 0, client_id = 7 }, function(err, value) result = { err = err, value = value } end)
-    assert(#selected.requests == 1 and #other.requests == 0, 'explicit client_id must take priority')
+    assert(#selected.requests == 1 and #other.requests == 0, '显式 client_id 应优先')
     selected.requests[1].handler(nil, nil)
     wait_for(function() return result ~= nil end)
-    assert(result.err == nil and #result.value.symbols == 0, 'nil symbols response must be an empty list')
+    assert(result.err == nil and #result.value.symbols == 0, 'nil symbols 响应应为空列表')
   end)
 end
 
@@ -88,7 +88,7 @@ do
     wait_for(function() return result ~= nil end)
     assert(
       result.err == nil and result.value.count == 2 and #result.value.locations == 2,
-      'duplicate locations must be removed'
+      '重复位置应被去重'
     )
   end)
 end
@@ -102,10 +102,10 @@ do
       function(err, value) result = { err = err, value = value } end
     )
     cancel()
-    assert(#client.cancelled == 1 and client.cancelled[1] == 1, 'cancel must physically cancel the request')
+    assert(#client.cancelled == 1 and client.cancelled[1] == 1, '取消必须物理取消请求')
     client.requests[1].handler(nil, {})
     vim.wait(30, function() return false end, 5)
-    assert(result == nil, 'late response after cancel must be discarded')
+    assert(result == nil, '取消后的迟到响应必须被丢弃')
   end)
 end
 
@@ -123,8 +123,8 @@ do
       end
     )
     wait_for(function() return result ~= nil end, 200)
-    assert(result.err and result.value == nil, 'timeout must report an error without a zero result')
-    assert(#client.cancelled == 1, 'timeout must physically cancel the request')
+    assert(result.err and result.value == nil, '超时应报告错误而非零结果')
+    assert(#client.cancelled == 1, '超时必须物理取消请求')
     assert(api_ok, api_error)
   end)
 end
@@ -145,8 +145,8 @@ do
         result = { err = err, value = value }
       end
     )
-    assert(calls == 1 and result.err == nil and result.value.count == 0, 'synchronous responses must callback once')
-    assert(#client.cancelled == 0, 'synchronous completion must not cancel a completed request')
+    assert(calls == 1 and result.err == nil and result.value.count == 0, '同步响应应只回调一次')
+    assert(#client.cancelled == 0, '同步完成不得取消已完成的请求')
   end)
 end
 
@@ -160,7 +160,7 @@ do
       calls = calls + 1
       error_value = err
     end)
-    assert(calls == 1 and error_value, 'request exceptions must callback exactly once')
+    assert(calls == 1 and error_value, '请求异常应恰好回调一次')
   end)
 end
 
@@ -194,7 +194,7 @@ do
     assert(result.value.encoding == 'utf-16' and result.value.count == 1)
     assert(result.value.locations[1].uri == 'file:///definition.lua')
     assert(client.requests[1].params.position.line == 0)
-    assert(client.requests[1].params.position.character == 3, 'byte column must convert to UTF-16 units')
+    assert(client.requests[1].params.position.character == 3, '字节列必须换算为 UTF-16 单位')
   end)
 
   local methods = {
@@ -211,7 +211,7 @@ do
         { buf = buf, method = kind, cursor = { line = 0, byte_col = 0 } },
         function(err) assert(err == nil) end
       )
-      assert(routed.requests[1].method == protocol_method, kind .. ' must use its LSP method')
+      assert(routed.requests[1].method == protocol_method, kind .. ' 必须使用对应的 LSP method')
     end)
   end
 end
@@ -237,7 +237,7 @@ do
     wait_for(function() return result ~= nil end)
     assert(result.err == nil and result.value.count == 1 and #result.value.locations == 1)
     assert(result.value.locations[1].uri == 'file:///declaration.lua')
-    assert(result.value.locations[1].range['end'].character == 4, 'targetSelectionRange must win over targetRange')
+    assert(result.value.locations[1].range['end'].character == 4, 'targetSelectionRange 应优先于 targetRange')
   end)
 end
 
@@ -246,7 +246,7 @@ do
   local high = client_fixture(9, { ['textDocument/implementation'] = true })
   with_clients({ high, low }, function()
     Lsp.locations({ buf = 0, method = 'implementation', cursor = { line = 0, byte_col = 0 } }, function() end)
-    assert(#low.requests == 1 and #high.requests == 0, 'locations must choose the lowest supported client id')
+    assert(#low.requests == 1 and #high.requests == 0, 'locations 应选择最小且支持的 client id')
   end)
 end
 
@@ -262,8 +262,8 @@ do
     assert(#client.cancelled == 1 and client.cancelled[1] == 1)
     client.requests[1].handler(nil, {})
     vim.wait(30, function() return false end, 5)
-    assert(result == nil, 'late location responses after cancellation must be discarded')
+    assert(result == nil, '取消后的迟到位置响应必须被丢弃')
   end)
 end
 
-print('test_lsp.lua: ok')
+print('test_lsp.lua: 通过')

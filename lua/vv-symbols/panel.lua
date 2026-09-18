@@ -285,6 +285,7 @@ function M.new(opts)
       end,
       node = function(ctx)
         ctx.result = view.data.results and view.data.results[ctx.node.id]
+        ctx.refs_label = view.opts.config.lens.label
         return Renderer.node(ctx)
       end,
       empty = function()

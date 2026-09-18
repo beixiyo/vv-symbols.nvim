@@ -5,6 +5,7 @@
 
 local Tree = require('vv-utils.tree_panel')
 local Path = require('vv-utils.path')
+local Lens = require('vv-symbols.lens')
 
 local M = {}
 
@@ -190,14 +191,14 @@ local function render_symbol(ctx, node)
   -- The symbols panel may provide the asynchronous lens result in the
   -- context; accepting it here keeps this renderer independent of the view.
   local result = ctx.result or node.result
+  local label = clean(ctx.refs_label or 'refs')
   if result then
-    if result.status == 'ready' then
-      local count = result.count or 0
+    local counted = Lens.count_chunks(result, label)
+    if counted then
       chunks[#chunks + 1] = { '  ', 'VVSymbolsLens' }
-      chunks[#chunks + 1] = { tostring(count), count == 0 and 'VVSymbolsZeroReferences' or 'VVSymbolsReferenceCount' }
-      chunks[#chunks + 1] = { ' refs', 'VVSymbolsLens' }
+      vim.list_extend(chunks, counted)
     else
-      local suffix = result.status == 'pending' and '  … refs' or result.status == 'error' and '  ? refs' or ''
+      local suffix = result.status == 'pending' and ('  … ' .. label) or result.status == 'error' and ('  ? ' .. label) or ''
       if suffix ~= '' then chunks[#chunks + 1] = { suffix, 'VVSymbolsLens' } end
     end
   end

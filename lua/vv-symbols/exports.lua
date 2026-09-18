@@ -22,6 +22,14 @@ local function parser_language(buf)
   return nil
 end
 
+--- 当前 buffer 的语言是否有导出识别（JS/TS/TSX 语法层识别 export 语句）；
+--- 其它语言无识别，调用方按「导出信息未知」处理
+---@param buf? integer
+---@return boolean
+function M.detects(buf)
+  return parser_language(buf) ~= nil
+end
+
 local function text(node, buf)
   local ok, value = pcall(vim.treesitter.get_node_text, node, buf)
   return ok and type(value) == 'string' and value or ''
@@ -128,25 +136,6 @@ local function top_level_declarations(root, buf)
   return declarations, imports
 end
 
-local function class_methods(targets, class_declaration)
-  local body = first_field(class_declaration, 'body') or child_of_type(class_declaration, 'class_body')
-  if not body then return end
-  for method in body:iter_children() do
-    if method:type() == 'method_definition' then
-      local private = false
-      for modifier in method:iter_children() do
-        local kind = modifier:type()
-        if kind == 'private_property_identifier' or kind == 'accessibility_modifier' then
-          local value = text(modifier, targets.buf)
-          if kind == 'private_property_identifier' or value == 'private' or value == 'protected' then private = true end
-        end
-      end
-      local name = first_field(method, 'name')
-      if name and not private and not text(name, targets.buf):match('^#') then add_target(targets, name, 'method') end
-    end
-  end
-end
-
 local function matches(node, target, buf, encoding, source_uri)
   if node.name ~= target.name then return false end
   if source_uri and node.uri ~= source_uri then return false end
@@ -204,7 +193,6 @@ function M.annotate(nodes, opts)
       end
       if declaration then
         add_declaration(targets, declaration)
-        if declaration:type() == 'class_declaration' then class_methods(targets, declaration) end
       else
         local clause = child_of_type(statement, 'export_clause')
         if clause then

@@ -12,7 +12,7 @@ local Model = require('vv-symbols.model')
 local Lens = require('vv-symbols.lens')
 local Config = require('vv-symbols.config')
 assert(Config.normalize().lens.scope == 'exported')
-assert(Config.normalize({ lens = { enabled = false } }).lens.enabled == false, 'lens can be disabled')
+assert(Config.normalize({ lens = { enabled = false } }).lens.enabled == false, 'lens 可被禁用')
 local buf = vim.api.nvim_create_buf(false, true)
 vim.bo[buf].filetype = 'typescript'
 vim.api.nvim_buf_set_name(buf, '/tmp/vv-symbols-exports.ts')
@@ -82,26 +82,37 @@ for _, node in ipairs(Model.flatten(roots)) do
 end
 assert(by_name.api.exported == true)
 assert(by_name.value.exported == true)
-assert(by_name.later.exported == true, 'declaration exported through an alias should be marked')
-assert(by_name.alias.exported == true, 'an exported alias落点 should also be recognized when reported by LSP')
+assert(by_name.later.exported == true, '经别名导出的声明应被标记')
+assert(by_name.alias.exported == true, 'LSP 报告的别名导出落点也应被识别')
 assert(by_name.Box.exported == true)
-assert(by_name.run.exported == true and by_name.plain.exported == true, 'public class methods are exported API')
+assert(
+  by_name.run.exported == false and by_name.plain.exported == false,
+  '类方法是类内部 API，不算模块级导出'
+)
+assert(Lens.matches(by_name.Box) == true, '导出类本身应显示引用计数')
+
+local functions_only = Model.filter({ nodes = roots, query = '', mode = 'fixed', kinds = { 'Function' } })
+local box_in_functions = false
+for _, node in ipairs(Model.flatten(functions_only.nodes)) do
+  if node.name == 'Box' and not node.context_only then box_in_functions = true end
+end
+assert(box_in_functions, 'functions 过滤下类也算可调用')
 assert(by_name.hide.exported == false and by_name['#secret'].exported == false and by_name.shield.exported == false)
 assert(by_name.localFn.exported == false)
 assert(
   by_name.nested.exported == false and by_name.localArrow.exported == false,
-  'nested locals must not inherit export'
+  '嵌套局部符号不得继承导出'
 )
-assert(by_name.external.exported == false, 'imports re-exported from another module are excluded')
-assert(by_name.fake.exported == false, 'comment text must not be parsed as export')
+assert(by_name.external.exported == false, '来自其它模块的 import 再导出应被排除')
+assert(by_name.fake.exported == false, '注释文本不得被解析为导出')
 
 assert(Lens.matches(by_name.api) == true)
 assert(Lens.matches(by_name.localFn) == false)
-assert(Lens.matches(by_name.localFn, { scope = 'all' }) == true, 'scope all should include callable symbols')
-assert(Lens.matches(by_name.run) == true)
+assert(Lens.matches(by_name.localFn, { scope = 'all' }) == true, 'scope=all 应包含全部可调用符号')
+assert(Lens.matches(by_name.run) == false, '类方法不得获得导出引用 lens')
 assert(Lens.matches(by_name.api, { filter = function(node) return node.name == 'api' end }) == true)
 assert(Lens.matches(by_name.api, { filter = function() return false end }) == false)
 assert(Lens.matches(by_name.hide, { scope = 'exported', filter = function() return true end }) == false)
 
 vim.api.nvim_buf_delete(buf, { force = true })
-print('vv-symbols exports test: ok')
+print('vv-symbols exports 测试: ok')

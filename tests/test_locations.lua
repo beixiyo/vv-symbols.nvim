@@ -37,11 +37,11 @@ local unsaved = Locations.build({
   },
   kind = 'Reference',
 })
-assert(#unsaved == 1 and #unsaved[1].children == 2, 'same file must have one group and duplicate ranges must collapse')
+assert(#unsaved == 1 and #unsaved[1].children == 2, '同文件应只有一个分组，重复位置应去重')
 local first = unsaved[1].children[1]
-assert(first.code == 'local café = 1' and first.lnum == 1, 'loaded buffer source and line number are required')
-assert(first.byte_col == 6 and first.byte_end_col == 11, 'utf-16 positions must become byte columns')
-assert(first.name:find('local café', 1, true), 'source code must be searchable')
+assert(first.code == 'local café = 1' and first.lnum == 1, '已加载 buffer 必须保留源码与行号')
+assert(first.byte_col == 6 and first.byte_end_col == 11, 'utf-16 位置必须换算为字节列')
+assert(first.name:find('local café', 1, true), '源码文本必须可被搜索')
 
 local disk_root = vim.fn.tempname()
 vim.fn.mkdir(disk_root .. '/src/deep', 'p')
@@ -80,36 +80,36 @@ local diagnostics = Locations.build({
     },
   },
 })
-assert(#diagnostics == 1 and #diagnostics[1].children == 3, 'diagnostics with different messages must not collapse')
-assert(diagnostics[1].label == 'src/…/file.lua', 'display path must be relative to root and collapse its middle')
-assert(diagnostics[1].name == disk_path, 'full path remains available for searching')
-assert(diagnostics[1].children[1].code == 'local value = 1', 'unloaded files use bounded readfile source')
+assert(#diagnostics == 1 and #diagnostics[1].children == 3, '不同 message 的诊断不得去重')
+assert(diagnostics[1].label == 'src/…/file.lua', '展示路径应相对 root 并压缩中段')
+assert(diagnostics[1].name == disk_path, '完整路径仍可用于搜索')
+assert(diagnostics[1].children[1].code == 'local value = 1', '未加载文件使用有界 readfile 读取源码')
 assert(
   diagnostics[1].children[1].kind == 'Error' and diagnostics[1].children[2].kind == 'Warn',
-  'diagnostic severity must become filterable child kinds'
+  '诊断严重级应转为可筛选的子节点类型'
 )
 assert(
   diagnostics[1].children[3].code == 'local remote = 1' and diagnostics[1].children[3].kind == 'Hint',
-  'unloaded source must reach the furthest requested line'
+  '未加载源码也应读取到最远请求行'
 )
 
 local warning_row = Render.node({ node = diagnostics[1].children[2], depth = 1, has_children = false, folded = false })
--- Regression: matching a filename must retain its result rows, not an empty heading.
+-- 回归：匹配文件名应保留结果行而非空标题
 local Model = require('vv-symbols.model')
 local by_file = Model.filter({ nodes = diagnostics, query = 'file.lua', mode = 'fixed' })
-assert(#by_file.nodes == 1 and #by_file.nodes[1].children == 3, 'filename match must retain all file results')
+assert(#by_file.nodes == 1 and #by_file.nodes[1].children == 3, '文件名命中应保留全部文件结果')
 local by_path = Model.filter({ nodes = diagnostics, query = 'src/deep', mode = 'fixed', kinds = { 'Warn' } })
-assert(#by_path.nodes == 1 and #by_path.nodes[1].children == 1, 'path match must still respect severity filtering')
-assert(by_path.nodes[1].children[1].kind == 'Warn', 'path match must not bypass the selected severity')
+assert(#by_path.nodes == 1 and #by_path.nodes[1].children == 1, '路径命中仍须服从严重级过滤')
+assert(by_path.nodes[1].children[1].kind == 'Warn', '路径命中不得绕过所选严重级')
 local by_message = Model.filter({ nodes = diagnostics, query = 'second', mode = 'fixed' })
-assert(#by_message.nodes == 1 and #by_message.nodes[1].children == 1, 'message match must retain only matching rows')
-assert(by_message.nodes[1].context_only, 'an unmatched file header is retained as context')
-assert(#diagnostics[1].children == 3, 'filtering must not mutate the source results')
+assert(#by_message.nodes == 1 and #by_message.nodes[1].children == 1, 'message 命中应只保留匹配行')
+assert(by_message.nodes[1].context_only, '未命中的文件头应作为上下文保留')
+assert(#diagnostics[1].children == 3, '过滤不得修改源结果')
 local warning_hl
 for _, chunk in ipairs(warning_row.chunks) do
   if chunk[1]:find('second', 1, true) then warning_hl = chunk[2] end
 end
-assert(warning_hl == 'DiagnosticWarn', 'diagnostic message highlight must follow severity')
+assert(warning_hl == 'DiagnosticWarn', '诊断 message 高亮应跟随严重级')
 
 local quickfix = Locations.build({
   kind = 'Quickfix',
@@ -128,7 +128,7 @@ local quickfix = Locations.build({
     },
   },
 })
-assert(#quickfix == 1 and #quickfix[1].children == 2, 'quickfix messages at one range must remain distinct')
+assert(#quickfix == 1 and #quickfix[1].children == 2, '同一范围的 quickfix message 应保持独立')
 
 local long_file = {
   id = 'long-file',
@@ -150,7 +150,7 @@ local narrow_header =
   table.concat(vim.tbl_map(function(chunk) return chunk[1] end, UIRows.expand(narrow_file_row)[1].chunks))
 assert(
   narrow_header:find('very_long_file_name.lua', 1, true) and narrow_header:find('…', 1, true),
-  'narrow file headers should retain the filename while collapsing middle path segments'
+  '窄面板的文件头应压缩路径中段并保留文件名'
 )
 
 local row = Render.node({ node = first, depth = 1, has_children = false, folded = false })
@@ -166,24 +166,24 @@ for _, chunk in ipairs(trimmed.chunks) do
     highlighted = highlighted .. chunk[1]
   end
 end
-assert(trimmed_text == '1 │ local café = 1', 'reference rows must trim source whitespace and avoid left padding')
-assert(highlighted == 'café', 'trimming tabs and spaces must preserve multibyte reference highlights')
+assert(trimmed_text == '1 │ local café = 1', '引用行应去除源码空白且不加左侧填充')
+assert(highlighted == 'café', '去除空白不得破坏多字节引用高亮')
 assert(
   indented.byte_col == 9 and indented.code == '  \tlocal café = 1  \t',
-  'rendering must retain original jump coordinates and source'
+  '渲染不得改动原始跳转坐标与源码'
 )
 local row_text = table.concat(vim.tbl_map(function(chunk) return chunk[1] end, row.chunks))
-assert(row_text:find('local café', 1, true), 'location row must retain real source text')
+assert(row_text:find('local café', 1, true), '位置行应保留真实源码文本')
 local file_row = Render.node({ node = unsaved[1], depth = 0, has_children = true, folded = false })
 assert(
   table.concat(vim.tbl_map(function(chunk) return chunk[1] end, file_row.chunks)):find('(2)', 1, true),
-  'file header must show its child count'
+  '文件头应显示子结果数量'
 )
 local file_lines = UIRows.expand(file_row)
-assert(#file_lines == 1, 'file header must not insert an empty separator before its first reference')
+assert(#file_lines == 1, '文件头不得在首个引用前插入空分隔行')
 for _, physical in ipairs(file_lines) do
   for _, chunk in ipairs(physical.chunks) do
-    assert(not chunk[1]:find('[\r\t]'), 'file header must not contain stray control characters')
+    assert(not chunk[1]:find('[\r\t]'), '文件头不得包含杂散控制字符')
   end
 end
 
@@ -192,9 +192,9 @@ local has_capture = false
 for _, chunk in ipairs(syntax) do
   if type(chunk[2]) == 'string' and chunk[2]:find('^@') then has_capture = true end
 end
-assert(has_capture, 'available parser must produce capture highlights')
+assert(has_capture, '可用 parser 应产出捕获高亮')
 
 vim.api.nvim_buf_delete(buf, { force = true })
 os.remove(disk_path)
 vim.fn.delete(disk_root, 'rf')
-print('PASS locations grouping, source columns, path display and syntax chunks')
+print('PASS 位置分组、源码列、路径展示与语法 chunk')

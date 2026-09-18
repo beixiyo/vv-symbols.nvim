@@ -1,16 +1,47 @@
--- 在符号定义行上方绘制引用查询状态的虚拟行
+-- 在符号定义行绘制引用查询状态提示（默认行尾，可选符号上方虚拟行）
 
 local M = {}
 local Model = require('vv-symbols.model')
 local namespace = vim.api.nvim_create_namespace('vv-symbols.lens')
 local buffers = {}
 
-local function default_format(_, result)
-  if type(result) ~= 'table' then return nil end
-  if result.status == 'pending' then return '… references' end
-  if result.status == 'error' then return '? references' end
-  if result.status ~= 'ready' or type(result.count) ~= 'number' then return nil end
-  return ('%d reference%s'):format(result.count, result.count == 1 and '' or 's')
+local DEFAULT_LABEL = 'refs'
+
+--- label 双形态解析：字符串直接用；函数接收 count（pending/error 时为 nil），
+--- 返回非空字符串，抛错或返回异常形态时回退默认。典型用法：单复数
+local function label_text(label, count)
+  if type(label) == 'function' then
+    local ok, text = pcall(label, count)
+    if ok and type(text) == 'string' and text ~= '' then return text end
+    return DEFAULT_LABEL
+  end
+  return label or DEFAULT_LABEL
+end
+
+local function default_format(label)
+  return function(_, result)
+    if type(result) ~= 'table' then return nil end
+    if result.status == 'pending' then return '… ' .. label_text(label, nil) end
+    if result.status == 'error' then return '? ' .. label_text(label, nil) end
+    if result.status ~= 'ready' or type(result.count) ~= 'number' then return nil end
+    return ('%d %s'):format(result.count, label_text(label, result.count))
+  end
+end
+
+--- 图标 + 数字 + 标签的引用计数 chunks；行内 eol 提示、符号面板与 ufo 折叠行共用
+--- 仅 ready 结果返回 chunks，其它状态返回 nil（pending/error 后缀由调用方自行处理）
+---@param result table 引用查询结果
+---@param label? string|fun(count: integer?): string 计数标签文案或单复数函数 @default 'refs'
+---@return table? chunks {{text, hl}, ...}
+function M.count_chunks(result, label)
+  if type(result) ~= 'table' or result.status ~= 'ready' or type(result.count) ~= 'number' then return nil end
+  local ok, icons = pcall(require, 'vv-icons')
+  local icon = ok and icons.ns.ui.link or ''
+  return {
+    { icon .. ' ', 'VVSymbolsReferenceIcon' },
+    { tostring(result.count), result.count == 0 and 'VVSymbolsZeroReferences' or 'VVSymbolsReferenceCount' },
+    { ' ' .. label_text(label, result.count), 'VVSymbolsLens' },
+  }
 end
 
 ---判断节点是否应显示引用提示。自定义 filter 不能绕过 callable 与 scope 安全边界
@@ -22,7 +53,11 @@ function M.matches(node, opts)
   if type(node) ~= 'table' or node.is_callable ~= true then return false end
   local scope = opts.scope or 'exported'
   if scope ~= 'all' and scope ~= 'exported' then return false end
-  if scope == 'exported' and node.exported ~= true then return false end
+  if scope == 'exported' and node.exported ~= true then
+    -- 语言没有导出识别时，顶层可调用符号视为模块 API（导出信息未知≠未导出）；
+    -- 类方法等嵌套符号仍不算，与 JS 类成员语义一致
+    if not (node.top_level == true and node.export_undetected == true) then return false end
+  end
   if opts.filter ~= nil then
     if type(opts.filter) ~= 'function' then return false end
     local ok, result = pcall(opts.filter, node)
@@ -98,8 +133,8 @@ function M.render(opts)
   if type(buf) ~= 'number' or not vim.api.nvim_buf_is_valid(buf) then return 0 end
   local nodes = type(opts.nodes) == 'table' and Model.flatten(opts.nodes) or {}
   local results = type(opts.results) == 'table' and opts.results or {}
-  local format = opts.format or default_format
-  local position = opts.position or 'above'
+  local format = opts.format or default_format(opts.label or DEFAULT_LABEL)
+  local position = opts.position or 'eol'
   assert(type(format) == 'function', 'format must be a function')
 
   local previous = buffers[buf]
@@ -123,7 +158,6 @@ function M.render(opts)
     then
       local ok_text, text = pcall(format, node, result)
       if ok_text and type(text) == 'string' and text ~= '' then
-        local prefix = line_prefix(buf, line)
         local chunks = { { text, 'VVSymbolsLens' } }
         if not opts.format and result.status == 'ready' then
           local number = text:match('^%d+')
@@ -142,8 +176,10 @@ function M.render(opts)
         local decoration
         if position == 'eol' then
           table.insert(chunks, 1, { '  ', 'VVSymbolsLens' })
-          decoration = { virt_text = chunks, virt_text_pos = 'eol' }
+          -- combine：背景跟随底层行，避免 replace 把光标行背景截断成普通背景色块
+          decoration = { virt_text = chunks, virt_text_pos = 'eol', hl_mode = 'combine' }
         else
+          local prefix = line_prefix(buf, line)
           if prefix ~= '' then table.insert(chunks, 1, { prefix, 'VVSymbolsLens' }) end
           decoration = { virt_lines = { chunks }, virt_lines_above = true }
         end
@@ -168,8 +204,9 @@ end
 ---@field nodes table 节点树或扁平节点列表
 ---@field results table<string|integer, VVSymbolsReferenceResult>
 ---@field format? fun(node:table, result:vv-symbols.ReferenceResult):string 自定义一行文本
+---@field label? string|fun(count: integer?): string 计数标签文案或单复数函数（count 为 nil 表示 pending/error），默认渲染与面板共用 @default 'refs'
 ---@field scope? 'exported'|'all' @default 'exported'
----@field position? 'above'|'eol' 显示在符号上方或定义行末尾 @default 'above'
+---@field position? 'eol'|'above' 显示在定义行末尾或符号上方 @default 'eol'
 ---@field filter? fun(node:table):boolean 在 callable 与 scope 之后追加的自定义包含条件
 
 return M
