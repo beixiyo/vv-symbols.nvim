@@ -8,9 +8,11 @@ local References = require('vv-symbols.references')
 local Lens = require('vv-symbols.lens')
 local Panel = require('vv-symbols.panel')
 local Lists = require('vv-symbols.lists')
+local Peek = require('vv-symbols.peek')
 local M = {}
 local config = Config.normalize()
 local enabled = false
+local trigger_bufs = {} ---@type table<integer, string> 已注册 peek 触发键的 buffer → lhs
 local lens_enabled = true
 local session, view, group, lists
 local refresh_session
@@ -33,6 +35,7 @@ local function publish(current)
       label = config.lens.label,
       position = config.lens.position,
       scope = config.lens.scope,
+      callable_only = config.lens.callable_only,
       filter = config.lens.filter,
     })
   end
@@ -126,6 +129,7 @@ refresh_session = function(current)
       concurrency = config.references.concurrency,
       max_symbols = config.references.max_symbols,
       include_declaration = config.references.include_declaration,
+      callable_only = config.lens.callable_only,
       timeout_ms = config.timing.timeout_ms,
       on_update = function(results)
         if not valid() then return end
@@ -295,6 +299,29 @@ function M.locations(opts)
   })
 end
 
+---浮窗预览光标符号的 LSP 位置；method 缺省取 config.peek.method（默认 'auto'）；cursor 使用零基字节列
+---浮窗内键位由 config.peek.keys 决定（默认 ]p / [p 切换，Enter 确认跳转），q/Esc 关闭
+---@param opts? {method?:string,buf?:integer,cursor?:table,client_id?:integer}
+function M.peek(opts)
+  opts = opts or {}
+  local buf = opts.buf or vim.api.nvim_get_current_buf()
+  if not eligible(buf) then return end
+
+  local win_cursor = vim.api.nvim_win_get_cursor(0)
+  local cursor = opts.cursor or { line = win_cursor[1] - 1, byte_col = win_cursor[2] }
+  local method = opts.method or config.peek.method
+  if method == 'auto' then method = Peek.resolve_method(buf, cursor) end
+
+  Peek.open({
+    method = method,
+    buf = buf,
+    client_id = opts.client_id,
+    cursor = cursor,
+    timeout_ms = config.timing.timeout_ms,
+    peek = config.peek,
+  })
+end
+
 ---显示诊断；默认整个工作区，buf=0 表示当前文件，toggle 默认 false
 ---@param opts? {buf?:integer,severity?:table|integer,toggle?:boolean}
 function M.diagnostics(opts)
@@ -368,7 +395,29 @@ function M.reference_chunks(buf, lnum)
   return nil
 end
 
----启用事件订阅，幂等；不注册全局快捷键
+---在 buffer 上注册 peek 触发键（buffer-local）；已注册或未配置时跳过
+---@param buf integer
+local function map_trigger(buf)
+  local lhs = config.peek.keys.trigger
+  if not lhs or trigger_bufs[buf] or not eligible(buf) then return end
+  trigger_bufs[buf] = lhs
+  vim.keymap.set('n', lhs, function() M.peek({ buf = buf }) end, { buffer = buf, desc = 'vv-symbols: peek' })
+end
+
+---移除全部由本插件注册的触发键；只删仍指向本插件的映射，不误删调用方后来覆盖的同名键
+local function unmap_triggers()
+  for buf, lhs in pairs(trigger_bufs) do
+    if vim.api.nvim_buf_is_valid(buf) then
+      local current = vim.fn.maparg(lhs, 'n', false, true)
+      if current.buffer == 1 and current.desc == 'vv-symbols: peek' then
+        pcall(vim.keymap.del, 'n', lhs, { buffer = buf })
+      end
+    end
+  end
+  trigger_bufs = {}
+end
+
+---启用事件订阅，幂等；仅按 config.peek.keys.trigger 注册 buffer-local 触发键，不注册全局快捷键
 function M.enable()
   if enabled then return end
   enabled = true
@@ -377,36 +426,15 @@ function M.enable()
     VVSymbolsKind = { link = 'Type' },
     VVSymbolsLens = { link = 'Comment' },
     VVSymbolsReferenceIcon = { link = 'Special' },
-    -- 列表内引用范围不再加视觉标记（下划线只保留在 preview 侧）
+    -- 列表内引用范围不再加视觉标记（落点高亮只保留在 preview 侧）
     VVSymbolsReferenceMatch = {},
     VVSymbolsReferenceCount = { link = 'VVSymbolsReferenceIcon' },
     VVSymbolsZeroReferences = { link = 'DiagnosticError' },
-    -- 匹配段整段染色（fg+bold+同色下划线）：颜色运行时取主题 @keyword 的 fg（见 apply_preview_hl）
-    VVSymbolsPreview = { bold = true, underline = true },
+    -- 落点实心块：跟随主题的「当前搜索匹配」语义（实心底 + 深色字），不借语法色，避免与代码撞色
+    VVSymbolsPreview = { link = 'CurSearch' },
   })
 
-  -- preview 匹配色跟随主题关键字色，不写死色值；两处兜底链均失效时才用内置黄
-  local function keyword_fg()
-    for _, name in ipairs({ '@keyword', 'Keyword' }) do
-      local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = name, link = true })
-      if ok and type(hl) == 'table' and hl.fg then return hl.fg end
-    end
-    return nil
-  end
-
-  local function apply_preview_hl()
-    local fg = keyword_fg() or '#e5c07b'
-    vim.api.nvim_set_hl(0, 'VVSymbolsPreview', {
-      bold = true,
-      fg = fg,
-      underline = true,
-      sp = fg,
-    })
-  end
-
-  apply_preview_hl()
   group = vim.api.nvim_create_augroup('VVSymbols', { clear = true })
-  vim.api.nvim_create_autocmd('ColorScheme', { group = group, callback = apply_preview_hl })
   local function follow(ev)
     local buf = ev.buf
     vim.schedule(function()
@@ -443,6 +471,15 @@ function M.enable()
     end,
   })
   vim.api.nvim_create_autocmd('VimLeavePre', { group = group, callback = M.disable })
+  -- peek 触发键跟随 LSP attach；enable 晚于已有 attach 时（如由 LspAttach 懒加载）补注册
+  vim.api.nvim_create_autocmd('LspAttach', { group = group, callback = function(ev) map_trigger(ev.buf) end })
+  vim.api.nvim_create_autocmd({ 'BufUnload', 'BufWipeout' }, {
+    group = group,
+    callback = function(ev) trigger_bufs[ev.buf] = nil end,
+  })
+  for _, client in ipairs(vim.lsp.get_clients()) do
+    for buf in pairs(client.attached_buffers) do map_trigger(buf) end
+  end
   follow({ buf = vim.api.nvim_get_current_buf(), event = 'enable' })
 end
 
@@ -463,6 +500,8 @@ function M.disable()
     view:close()
     view = nil
   end
+  Peek.close()
+  unmap_triggers()
   Lens.clear_all()
 end
 
@@ -479,6 +518,7 @@ function M.setup(opts)
     VVSymbolsFilter = M.filter,
     VVSymbolsRefresh = M.refresh,
     VVSymbolsReferences = M.references,
+    VVSymbolsPeek = M.peek,
     VVSymbolsDiagnostics = M.diagnostics,
     VVSymbolsQuickfix = M.quickfix,
     VVSymbolsLoclist = M.loclist,

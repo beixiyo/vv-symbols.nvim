@@ -9,6 +9,20 @@
   </p>
 </div>
 
+## Demo
+
+### Symbol tree
+
+![Symbol tree](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png)
+
+### References
+
+![References](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png)
+
+### Floating preview
+
+![Floating preview](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png)
+
 ## Why replace Trouble
 
 - Trouble gets stuck during continuous resizing and requires switching windows to recover.
@@ -22,7 +36,8 @@ vv-symbols brings symbols, references, definitions, implementations, diagnostics
 - Filter the symbol tree by name and type, with a quick toggle for functions only (classes count as callable).
 - Browse locations grouped by file, with shortened paths, trimmed code snippets, and Tree-sitter syntax highlighting.
 - Preview source as the list cursor moves, then confirm the jump or exit to restore the original position.
-- Display reference counts above symbols or at the end of their definition lines; exported callables only by default.
+- `gp` peeks the cursor symbol's LSP location in a floating window (`require('vv-symbols').peek()`): declarations for type names, implementations otherwise; cycle multiple results with ]p / [p, Enter to jump. The plugin registers `gp` as a buffer-local key on LSP attach (overriding the built-in `gp`); change or disable it with `peek.keys`.
+- Display reference counts above symbols or at the end of their definition lines; every exported symbol by default (variables/constants included), or exported callables only with `callable_only = true`.
 - Export detection covers `export function/class/const`, re-export clauses and default exports. Exported classes count as
 reference targets themselves (invoked via `new`), while their members are class-internal API and never count as module
 exports; arrow functions and function expressions assigned to
@@ -61,10 +76,26 @@ return {
         enabled = true,      -- Show reference counts; disabling stops automatic queries
         scope = 'exported',  -- 'exported' / 'all'; export detection supports JS/TS/TSX.
                             --   Languages without detection treat top-level callables as the module API
+        callable_only = false, -- true restricts counts to callables (the top-level fallback only ever covers callables)
         position = 'eol',    -- 'eol' at the end of its definition line / 'above' the symbol
         label = 'refs',      -- Count label text, or fun(count) for singular/plural, shared by lens and panel
         -- filter = function(node) return node.name ~= 'internal' end,
         -- filter runs after scope; use scope = 'all' for custom rules in other languages
+      },
+      peek = {
+        -- Where the size comes from: 'content' fits the content and treats both ratios as caps
+        -- (height never drops below half the screen); 'screen' uses the ratios as the actual size.
+        -- Both ratios are relative to the whole editor (terminal)
+        size = 'content',
+        width_ratio = 0.8,   -- Share of editor columns
+        height_ratio = 0.75, -- Share of available editor lines
+        border = 'rounded',  -- Peek window border
+        -- Method used when peek() gets none: 'auto' queries definition on type names
+        -- (interface/type/enum... semantic tokens) and implementation otherwise; or pin one, e.g. 'definition'
+        method = 'auto',
+        -- trigger is registered buffer-local on LSP attach to file buffers (overrides the built-in gp);
+        -- confirm / next / prev act inside the float. false disables one key, keys = false disables all
+        keys = { trigger = 'gp', confirm = '<CR>', next = ']p', prev = '[p' },
       },
       locations = {
         jump_single_result = true, -- Jump directly to a single definition/reference/etc.; no results stay silent
@@ -146,6 +177,7 @@ In the input box, `Shift-Tab` switches matching modes, `Ctrl-N/P` moves through 
 |---|---|
 | `:VVSymbolsToggle` | Toggle the current file's symbol tree |
 | `:VVSymbolsReferences` | Show references at the cursor |
+| `:VVSymbolsPeek` | Peek the cursor symbol's LSP location in a floating window (method per `peek.method`) |
 | `:VVSymbolsDiagnostics` | Show workspace diagnostics |
 | `:VVSymbolsQuickfix` | Show quickfix |
 | `:VVSymbolsLoclist` | Show the current window's loclist |

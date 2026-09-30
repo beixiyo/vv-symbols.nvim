@@ -39,8 +39,13 @@ function Preview:show(node)
   local last = math.min(finish.line, vim.api.nvim_buf_line_count(buf) - 1)
   local text = vim.api.nvim_buf_get_lines(buf, last, last + 1, false)[1] or ''
   local last_col = vim.str_byteindex(text, node.encoding or 'utf-16', finish.character, false)
+  -- 整行底色用 hl_group + hl_eol：line_hl_group 会无视 priority 盖掉 VVSymbolsPreview 的 bg
   vim.api.nvim_buf_set_extmark(buf, namespace, target.row - 1, 0, {
-    line_hl_group = 'CursorLine',
+    end_row = target.row,
+    end_col = 0,
+    hl_group = 'CursorLine',
+    hl_eol = true,
+    strict = false,
     priority = 150,
   })
   if last > target.row - 1 or last_col > target.col then
@@ -48,7 +53,9 @@ function Preview:show(node)
       end_row = last,
       end_col = last_col,
       hl_group = 'VVSymbolsPreview',
-      priority = 160,
+      -- 高于 LSP document highlight（vim.hl.priorities.user = 200）：光标停在预览符号上时
+      -- LspReferenceText 的 bg 会盖掉落点高亮
+      priority = 5000,
     })
   end
 end

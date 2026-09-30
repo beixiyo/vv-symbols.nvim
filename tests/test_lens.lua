@@ -15,6 +15,40 @@ assert(
   defaults.lens.position == 'eol' and defaults.lens.label == 'refs',
   '默认值必须是 eol 位置加 refs 标签'
 )
+assert(defaults.lens.callable_only == false, 'callable_only 默认必须为 false（所有导出符号计数）')
+assert(defaults.peek.width_ratio == 0.8 and defaults.peek.height_ratio == 0.75, 'peek 几何默认值应为 0.8/0.75')
+local exported_variable = {
+  id = 'variable',
+  uri = 'file:///variable.lua',
+  is_callable = false,
+  exported = true,
+  range = { start = { line = 1 } },
+}
+assert(Lens.matches(exported_variable) == true, '默认导出变量也应计入引用提示')
+assert(
+  Lens.matches(exported_variable, { callable_only = true }) == false,
+  'callable_only=true 时仅可调用符号计入'
+)
+assert(
+  Lens.matches({ is_callable = false, exported = false, top_level = true, export_undetected = true }) == false,
+  '无导出识别语言的顶层非可调用符号（markdown 标题等）不得凭豁免计数'
+)
+assert(
+  Lens.matches({ is_callable = true, exported = false, top_level = true, export_undetected = true }) == true,
+  '无导出识别语言的顶层函数仍视为模块 API'
+)
+assert(
+  Lens.matches({ id = 'nested', uri = 'file:///variable.lua', is_callable = false, exported = false, top_level = false, export_undetected = true }) == false,
+  '嵌套符号仍受 scope 约束'
+)
+assert(
+  Lens.matches({ id = 'nested2', uri = 'file:///variable.lua', is_callable = false, exported = false, top_level = false, export_undetected = true }, { callable_only = true }) == false,
+  'callable_only=true 时嵌套符号仍被排除'
+)
+assert(
+  Lens.matches(exported_variable, { filter = function() return false end }) == false,
+  '自定义 filter 不能被绕过'
+)
 local buf = vim.api.nvim_create_buf(true, false)
 vim.api.nvim_buf_set_name(buf, '/tmp/vv-symbols-lens.lua')
 vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'function first() end', '  function second() end' })

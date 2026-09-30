@@ -11,6 +11,7 @@
 - `panel.lua`：树与输入交互，不发送 LSP 请求
 - `navigation.lua`：结果级导航、折叠分组与方向键进入策略
 - `preview.lua`：LSP 位置编码、跨文件预览、确认跳转和取消恢复
+- `peek.lua`：LSP 位置浮窗预览的会话编排（请求、多结果切换、标题与确认跳转）；浮窗机制由 `vv-utils.ui_peek` 提供
 - `init.lua`：公共 API、当前文档会话、事件与资源所有权
 - `config.lua`：公共默认值和边界归一化
 

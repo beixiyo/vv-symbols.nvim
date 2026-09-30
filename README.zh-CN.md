@@ -9,6 +9,20 @@
   </p>
 </div>
 
+## 演示
+
+### 符号树
+
+![符号树](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png)
+
+### 引用列表
+
+![引用列表](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png)
+
+### 浮窗预览
+
+![浮窗预览](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png)
+
 ## 为什么替代 Trouble
 
 - Trouble 连续调整窗口大小会卡住，需要切换窗口才能恢复
@@ -22,7 +36,8 @@ vv-symbols 将符号、引用、定义、实现、诊断、quickfix 和 loclist 
 - 符号树支持名称与类型筛选，可快速切换为仅显示函数（类也算可调用）
 - 位置列表按文件分组，自动压缩长路径、去除代码两侧空白，保留 Tree-sitter 语法高亮
 - 移动列表光标实时预览源码，确认跳转或退出时恢复原位置
-- 源码中显示引用数量，可放在符号上方或行末；默认只显示导出的可调用符号（函数、经 `new` 调用的导出类等）
+- `gp` 浮窗预览光标符号的 LSP 位置（`require('vv-symbols').peek()`）：类型名上看声明体，其余看实现；多结果 ]p / [p 切换，Enter 确认跳转。`gp` 由插件在 LSP attach 时注册为 buffer-local 键（会覆盖内置 `gp`），可通过 `peek.keys` 改键或禁用
+- 源码中显示引用数量，可放在符号上方或行末；默认所有导出符号（含变量/常量）都显示，`callable_only = true` 可仅限函数等可调用符号
 - 导出识别覆盖 `export function/class/const`、再导出子句与默认导出。导出类本身计入引用目标（通过 `new` 调用），类成员属于类内部 API，不算模块导出；变量赋值的箭头函数与函数表达式均可识别，包括 `memo(() => …)` 这类具名调用包装（方法调用如 `list.map(() => …)` 不算）
 - 固定底部快捷键提示，支持方向键、折叠操作和 `g?` 帮助
 
@@ -56,11 +71,26 @@ return {
       lens = {
         enabled = true,      -- 显示引用计数；关闭后停止自动引用查询
         scope = 'exported',  -- 'exported' / 'all'；导出识别支持 JS/TS/TSX，
-                            --   其它语言顶层可调用符号视为模块 API（如 Lua 的 local 函数也会计入）
+                            --   其它语言仅顶层可调用符号视为模块 API（如 Lua 的 local 函数会计入）
+        callable_only = false, -- true 时仅函数等可调用符号计数（「其它语言顶层豁免」本就只对可调用符号生效）
         position = 'eol',    -- 'eol' 定义行末 / 'above' 符号上方虚拟行
         label = 'refs',      -- 计数标签文案，或 fun(count) 处理单复数；lens 与面板共用
         -- filter = function(node) return node.name ~= 'internal' end,
-        -- filter 在 scope 之后追加筛选；其他语言可搭配 scope = 'all'
+        -- filter 在 callable 与 scope 之后追加筛选；其他语言可搭配 scope = 'all'
+      },
+      peek = {
+        -- 宽高来源：'content' 按内容自适应，下面两个比例只作上限（高度不低于半屏）
+        -- 'screen' 直接按比例作为实际宽高；比例基准都是整个 editor（终端）
+        size = 'content',
+        width_ratio = 0.8,   -- 占 editor 列数比例
+        height_ratio = 0.75, -- 占 editor 可用行数比例
+        border = 'rounded',  -- 浮窗边框
+        -- peek() 未传 method 时的查询方法：'auto' 在类型名（interface/type/enum 等语义 token）上查 definition，
+        -- 其余查 implementation；也可固定为 'definition' / 'implementation' 等
+        method = 'auto',
+        -- 快捷键：trigger 在 LSP attach 的普通文件 buffer 上注册（buffer-local，会覆盖内置 gp）；
+        -- confirm / next / prev 作用于浮窗内。逐项 false 禁用，keys = false 全部禁用
+        keys = { trigger = 'gp', confirm = '<CR>', next = ']p', prev = '[p' },
       },
       locations = {
         jump_single_result = true, -- 单个定义/引用/实现等直接跳转；零结果静默结束
@@ -140,6 +170,7 @@ nvim-ufo 用户可配置 `fold_virt_text_handler` 拼接 chunks（ufo 更新循�
 |---|---|
 | `:VVSymbolsToggle` | 打开/关闭当前文件符号树 |
 | `:VVSymbolsReferences` | 查看光标处引用 |
+| `:VVSymbolsPeek` | 浮窗预览光标符号的 LSP 位置（方法见 `peek.method`） |
 | `:VVSymbolsDiagnostics` | 查看工作区诊断 |
 | `:VVSymbolsQuickfix` | 查看 quickfix |
 | `:VVSymbolsLoclist` | 查看当前窗口 loclist |

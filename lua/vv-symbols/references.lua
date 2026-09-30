@@ -1,4 +1,5 @@
--- 调度可调用符号的 LSP 引用查询，并维护可供展示的状态快照
+-- 调度符号的 LSP 引用查询，并维护可供展示的状态快照；
+-- 默认查询传入的全部节点，callable_only=true 时仅查询可调用符号
 
 local Async = require('vv-utils.async')
 
@@ -32,6 +33,7 @@ local function normalize_opts(opts)
     max_symbols = positive_integer(opts.max_symbols, 'max_symbols', DEFAULT_MAX_SYMBOLS, true),
     timeout_ms = positive_integer(opts.timeout_ms, 'timeout_ms', DEFAULT_TIMEOUT_MS, true),
     include_declaration = opts.include_declaration == true,
+    callable_only = opts.callable_only == true,
     on_update = opts.on_update,
   }
 end
@@ -66,7 +68,7 @@ function M.start(opts)
   local results = {}
 
   for _, node in ipairs(nodes) do
-    if node.is_callable == true then callable[#callable + 1] = node end
+    if not config.callable_only or node.is_callable == true then callable[#callable + 1] = node end
   end
 
   for index, node in ipairs(callable) do
@@ -188,6 +190,7 @@ end
 ---@field max_symbols? integer 最多查询的可调用符号数，超出者为 skipped @default 200
 ---@field timeout_ms? integer 单个 LSP 请求超时毫秒数 @default 3000
 ---@field include_declaration? boolean 是否包含声明位置 @default false
+---@field callable_only? boolean 仅查询可调用符号；默认 false 时查询全部传入节点
 ---@field on_update? fun(results:table<string|integer, VVSymbolsReferenceResult>)
 
 ---@class VVSymbolsReferenceResult

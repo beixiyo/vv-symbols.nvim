@@ -46,17 +46,22 @@ end
 
 ---判断节点是否应显示引用提示。自定义 filter 不能绕过 callable 与 scope 安全边界
 ---@param node VVSymbolsNode
----@param opts? {scope?:'exported'|'all',filter?:fun(node:VVSymbolsNode):boolean}
+---@param opts? {scope?:'exported'|'all',callable_only?:boolean,filter?:fun(node:VVSymbolsNode):boolean}
 ---@return boolean
 function M.matches(node, opts)
   opts = opts or {}
-  if type(node) ~= 'table' or node.is_callable ~= true then return false end
+  if type(node) ~= 'table' then return false end
+  -- 默认所有 scope 命中的符号都计入；callable_only=true 时仅限函数等可调用符号
+  if opts.callable_only == true and node.is_callable ~= true then return false end
   local scope = opts.scope or 'exported'
   if scope ~= 'all' and scope ~= 'exported' then return false end
   if scope == 'exported' and node.exported ~= true then
-    -- 语言没有导出识别时，顶层可调用符号视为模块 API（导出信息未知≠未导出）；
-    -- 类方法等嵌套符号仍不算，与 JS 类成员语义一致
-    if not (node.top_level == true and node.export_undetected == true) then return false end
+    -- 语言没有导出识别时，仅顶层可调用符号按模块 API 豁免（导出未知≠导出）：
+    -- callable_only=false 只扩展「已确认导出」的非可调用符号（JS/TS 的导出变量等），
+    -- 顶层变量、文档标题等不得凭豁免进入计数
+    if not (node.is_callable == true and node.top_level == true and node.export_undetected == true) then
+      return false
+    end
   end
   if opts.filter ~= nil then
     if type(opts.filter) ~= 'function' then return false end
@@ -206,6 +211,7 @@ end
 ---@field format? fun(node:table, result:vv-symbols.ReferenceResult):string 自定义一行文本
 ---@field label? string|fun(count: integer?): string 计数标签文案或单复数函数（count 为 nil 表示 pending/error），默认渲染与面板共用 @default 'refs'
 ---@field scope? 'exported'|'all' @default 'exported'
+---@field callable_only? boolean 仅可调用符号计数；默认 false 时导出变量/常量也计入
 ---@field position? 'eol'|'above' 显示在定义行末尾或符号上方 @default 'eol'
 ---@field filter? fun(node:table):boolean 在 callable 与 scope 之后追加的自定义包含条件
 

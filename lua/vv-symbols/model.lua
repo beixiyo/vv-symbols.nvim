@@ -248,7 +248,7 @@ local function normalize_symbol(symbol, opts, source_uri, arrow_candidates, symb
     children = {},
     is_callable = is_callable == true,
     exported = false,
-    -- 语言无导出识别时，顶层可调用符号由 lens 按模块 API 处理（见 Lens.matches）
+    -- 语言无导出识别时，顶层符号由 lens 按模块 API 处理（见 Lens.matches 与 lens.callable_only）
     top_level = top_level == true,
     export_undetected = opts.export_undetected == true,
   }

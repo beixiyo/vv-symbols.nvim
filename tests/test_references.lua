@@ -97,7 +97,10 @@ assert(
   '真实的空响应应保持零引用'
 )
 assert(final['fn-4'].status == 'skipped', '超出 max_symbols 的符号应被跳过')
-assert(final.variable == nil, '不可调用符号不得纳入统计')
+assert(
+  final.variable.status == 'skipped',
+  '非可调用符号默认进入队列，超出 max_symbols 同样被跳过'
+)
 
 local malformed_updates = {}
 References.start({
@@ -144,5 +147,43 @@ assert(
 )
 vim.wait(50)
 assert(late_updates == 0, '已取消的轮次必须忽略调度与迟到回调')
+
+-- callable_only=true：仅可调用节点进入查询队列
+requests = {}
+local variable_updates = {}
+References.start({
+  buf = 1,
+  nodes = {
+    {
+      id = 'exported-function',
+      is_callable = true,
+      buf = 1,
+      uri = 'file:///fixture.lua',
+      selection_range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 1 } },
+    },
+    {
+      id = 'exported-const',
+      is_callable = false,
+      buf = 1,
+      uri = 'file:///fixture.lua',
+      selection_range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 1 } },
+    },
+  },
+  callable_only = true,
+  on_update = function(snapshot) variable_updates[#variable_updates + 1] = snapshot end,
+})
+assert(#requests == 1, 'callable_only=true 时仅可调用节点应发起引用查询')
+resolve(#requests, nil, { locations = {}, count = 0, encoding = 'utf-8' })
+assert(
+  vim.wait(100, function()
+    local snapshot = variable_updates[#variable_updates]
+    return snapshot and snapshot['exported-function'] and snapshot['exported-function'].status == 'ready'
+  end, 5),
+  '可调用节点的结果应正常发布'
+)
+assert(
+  variable_updates[#variable_updates]['exported-const'] == nil,
+  'callable_only=true 时非可调用节点不得出现在结果快照中'
+)
 
 vim.cmd('qa!')
