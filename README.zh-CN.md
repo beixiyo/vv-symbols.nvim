@@ -44,13 +44,12 @@ vv-symbols 将符号、引用、定义、实现、诊断、quickfix 和 loclist 
 
 要求 Neovim 0.12+、`vv-utils.nvim` 和对应语言的 LSP。源码高亮需要对应的 Tree-sitter parser；Lua 文档注释还需要 `luadoc` parser 与查询文件
 
-在 LazyVim 的 `lua/plugins/` 中添加文件，或将以下声明放入 lazy.nvim 的插件列表。当前使用本地插件目录：
+在 LazyVim 的 `lua/plugins/` 中添加文件，或将以下声明放入 lazy.nvim 的插件列表：
 
 ```lua
 return {
   {
-    dir = vim.fn.expand('~/.config/nvim/vendors/vv-symbols.nvim'),
-    name = 'vv-symbols.nvim',
+    'beixiyo/vv-symbols.nvim',
     dependencies = {
       'beixiyo/vv-utils.nvim',
       'beixiyo/vv-icons.nvim', -- 可选，统一图标风格

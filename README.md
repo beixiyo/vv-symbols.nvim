@@ -48,13 +48,12 @@ variables are recognized, including HOC-style identifier-call wrappers such as `
 
 Requires Neovim 0.12+, `vv-utils.nvim`, and an LSP server for the language. Source highlighting requires the corresponding Tree-sitter parser; Lua documentation comments also require the `luadoc` parser and query files.
 
-Add a file under LazyVim's `lua/plugins/`, or include this spec in your lazy.nvim plugin list. This example currently uses a local plugin directory:
+Add a file under LazyVim's `lua/plugins/`, or include this spec in your lazy.nvim plugin list:
 
 ```lua
 return {
   {
-    dir = vim.fn.expand('~/.config/nvim/vendors/vv-symbols.nvim'),
-    name = 'vv-symbols.nvim',
+    'beixiyo/vv-symbols.nvim',
     dependencies = {
       'beixiyo/vv-utils.nvim',
       'beixiyo/vv-icons.nvim', -- Optional, for consistent icons
