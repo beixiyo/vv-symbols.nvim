@@ -11,17 +11,16 @@
 
 ## Demo
 
-### Symbol tree
-
-![Symbol tree](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png)
-
-### References
-
-![References](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png)
-
-### Floating preview
-
-![Floating preview](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png)
+<table align="center">
+  <tr>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png">Symbol tree<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png" alt="Symbol tree" width="500"></a></td>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references-count.png">Reference counts<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references-count.png" alt="Reference counts" width="500"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png">References<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png" alt="References" width="500"></a></td>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png">Floating preview<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png" alt="Floating preview" width="500"></a></td>
+  </tr>
+</table>
 
 ## Why replace Trouble
 

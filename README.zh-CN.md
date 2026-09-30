@@ -11,17 +11,16 @@
 
 ## 演示
 
-### 符号树
-
-![符号树](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png)
-
-### 引用列表
-
-![引用列表](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png)
-
-### 浮窗预览
-
-![浮窗预览](https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png)
+<table align="center">
+  <tr>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png">符号树<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/symbols.png" alt="符号树" width="500"></a></td>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references-count.png">引用计数<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references-count.png" alt="引用计数" width="500"></a></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png">引用列表<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/references.png" alt="引用列表" width="500"></a></td>
+    <td align="center"><a href="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png">浮窗预览<br><img src="https://github.com/beixiyo/vv-symbols.nvim/releases/download/assets-2026-09-30/preview.png" alt="浮窗预览" width="500"></a></td>
+  </tr>
+</table>
 
 ## 为什么替代 Trouble
 
