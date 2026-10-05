@@ -1,6 +1,7 @@
 -- 位置列表控制器：拥有查询、诊断订阅和失效处理，展示交给面板
 local Locations = require('vv-symbols.locations')
 local Lsp = require('vv-symbols.lsp')
+local Loading = require('vv-symbols.loading')
 local Async = require('vv-utils.async')
 local Path = require('vv-utils.path')
 local M = {}
@@ -195,13 +196,21 @@ function Lists:refresh()
     local tick = vim.api.nvim_buf_get_changedtick(ctx.buf)
     local request = self.scope:begin()
     self:publish({}, nil, true)
+    -- 首次结果前面板不出现（单结果直接跳转时不闪面板），帧是唯一反馈；请求结束、被取代或取消都会调用 disposer
+    if not ctx.presented then
+      local target = ctx.loading_target or Loading.cursor_target(ctx.buf, function() return (current_cursor(ctx)) end)
+      if target then
+        local handle = Loading.start(target)
+        request:set_disposer(function() handle:stop() end)
+      end
+    end
     local cancel = Lsp.locations({
       buf = ctx.buf,
       method = ctx.kind,
       cursor = ctx.cursor,
       client_id = ctx.client_id,
       timeout_ms = self.config.timing.timeout_ms,
-      include_declaration = self.config.references.include_declaration,
+      include_declaration = self.config.locations.include_declaration,
     }, function(err, result)
       if not request:finish() or self.context ~= ctx then return end
       if not vim.api.nvim_buf_is_valid(ctx.buf) or vim.api.nvim_buf_get_changedtick(ctx.buf) ~= tick then

@@ -1,9 +1,10 @@
 -- vv-symbols.peek — 编排 LSP 位置在 ui_peek 浮窗中的预览会话
 --
 -- 窗口、快照、高亮与键位机制全部由 vv-utils.ui_peek 提供；本模块只保留
--- 策略：位置请求与过期保护、多结果切换、标题文案与确认跳转
+-- 策略：位置请求与过期保护、多结果切换、标题文案、底部按键提示与确认跳转
 
 local Lsp = require('vv-symbols.lsp')
+local Loading = require('vv-symbols.loading')
 local UiPeek = require('vv-utils.ui_peek')
 
 local M = {}
@@ -21,6 +22,7 @@ local TYPE_TOKENS = { interface = true, type = true, typeParameter = true, enum 
 
 local state = nil ---@type table? { source_win, method, locations, index, encoding, cancel }
 local revision = 0
+local loading = nil ---@type vv-utils.loading.Handle? 当前请求的等待帧；浮窗出现前它是唯一反馈
 local configured = nil
 
 local function title(location)
@@ -81,6 +83,27 @@ local function keys(mapping)
   return result
 end
 
+---底部按键提示：只列出真实注册的键；单结果时 next/prev 无操作，不展示
+---顺序即截断优先级，窄窗口先丢弃末尾的 Close
+---@param peek VVSymbolsPeekConfig
+---@param total integer 当前结果数
+---@return VVKeyHint[]
+local function hints(peek, total)
+  local mapping = peek.keys or {}
+  local result = {}
+  if mapping.confirm then result[#result + 1] = { key = mapping.confirm, desc = 'Jump' } end
+  if total > 1 then
+    if mapping.next then result[#result + 1] = { key = mapping.next, desc = 'Next' } end
+    if mapping.prev then result[#result + 1] = { key = mapping.prev, desc = 'Prev' } end
+  end
+  -- 关闭键由 ui_peek 注册，以它的实际配置为准
+  local close_keys = UiPeek.get_config().close_keys
+  if type(close_keys) == 'table' and close_keys[1] then
+    result[#result + 1] = { key = close_keys[1], desc = 'Close' }
+  end
+  return result
+end
+
 ---把 vv-symbols 的 peek 配置翻译为 ui_peek 的几何与键位策略；同表幂等
 local function configure(peek)
   if configured == peek then return end
@@ -93,6 +116,11 @@ local function configure(peek)
   }))
 end
 
+local function stop_loading()
+  if loading then loading:stop() end
+  loading = nil
+end
+
 local function show(location)
   local info = UiPeek.show({
     uri = location.uri,
@@ -100,7 +128,7 @@ local function show(location)
     encoding = state.encoding,
     title = title(location),
     source_win = state.source_win,
-  })
+  }, configured and configured.hints and { hints = hints(configured, #state.locations) } or nil)
   if not info then
     state = nil
     vim.notify('vv-symbols: failed to read ' .. vim.uri_to_fname(location.uri), vim.log.levels.WARN)
@@ -108,7 +136,7 @@ local function show(location)
 end
 
 ---查询并在浮窗预览光标符号的 LSP 位置
----@param opts {method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,peek?:table}
+---@param opts {method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek?:table}
 function M.open(opts)
   local method = opts.method or 'implementation'
   if not titles[method] then
@@ -131,13 +159,21 @@ function M.open(opts)
   revision = revision + 1
   local token = revision
 
+  stop_loading()
+  local target = Loading.cursor_target(opts.buf, function() return opts.cursor end)
+  local handle = target and Loading.start(target)
+  loading = handle
+
   local cancel = Lsp.locations({
     method = method,
     buf = opts.buf,
     cursor = opts.cursor,
     client_id = opts.client_id,
     timeout_ms = opts.timeout_ms,
+    include_declaration = opts.include_declaration,
   }, function(err, result)
+    -- 过期回调只停自己的帧；新一次 peek 已在发起时停掉旧帧并持有自己的 handle
+    if handle then handle:stop() end
     if revision ~= token then return end
     state.cancel = nil
     if err then
@@ -189,6 +225,7 @@ end
 function M.close(focus_source)
   local active = state
   state = nil
+  stop_loading()
   if active and active.cancel then pcall(active.cancel) end
   UiPeek.close(focus_source)
 end

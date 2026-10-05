@@ -115,18 +115,7 @@ local function panel_width(ctx)
 end
 
 local function display_path(path, available)
-  path = Path.norm(path)
-  local candidate = Path.collapse_middle(path, { head = 1, tail = 3 })
-  if available and vim.fn.strdisplaywidth(candidate) > available then
-    candidate = Path.collapse_middle(path, { head = 1, tail = 2 })
-  end
-  if available and vim.fn.strdisplaywidth(candidate) > available then
-    candidate = Path.collapse_middle(path, { head = 1, tail = 1 })
-  end
-  if available and vim.fn.strdisplaywidth(candidate) > available then
-    candidate = Path.collapse_middle(path, { head = 0, tail = 1 })
-  end
-  return candidate
+  return Path.collapse_middle(Path.norm(path), { head = 1, tail = 3, max_width = available })
 end
 
 --- Render the source path with the same width-aware compression as file groups.
@@ -180,11 +169,14 @@ local function render_location(ctx, node)
   return { chunks = output }
 end
 
-local function render_symbol(ctx, node)
-  local indent = string.rep('  ', ctx.depth or 0)
+local function symbol_prefix(ctx)
   local marker = ctx.has_children and (ctx.folded and CHEVRON_CLOSED or CHEVRON_OPEN) or '  '
+  return string.rep('  ', ctx.depth or 0) .. marker
+end
+
+local function render_symbol(ctx, node)
   local chunks = {
-    { indent .. marker, 'Comment' },
+    { symbol_prefix(ctx), 'Comment' },
     { clean(node.label or node.name), node.context_only and 'Comment' or symbol_hl(node.kind) },
     { '  ' .. clean(node.kind), 'Comment' },
   }
@@ -203,6 +195,14 @@ local function render_symbol(ctx, node)
     end
   end
   return { chunks = chunks }
+end
+
+--- Byte column right after a symbol row's name, before its kind; the row is laid out by `M.node`.
+---@param ctx VVTreePanelRenderContext
+---@return integer
+function M.symbol_name_end(ctx)
+  local node = ctx.node or {}
+  return #symbol_prefix(ctx) + #clean(node.label or node.name)
 end
 
 --- Render a node for `vv-utils.tree_panel`.

@@ -468,6 +468,29 @@ function View:begin_list(return_context)
   self.tree.folded = {}
 end
 
+---面板中符号名后、kind 前的 loading 锚点；节点不再可见或已切到位置列表时隐藏
+---@param node table
+---@return VVSymbolsLoadingTarget
+function View:loading_target(node)
+  local tree = self.tree
+  return {
+    buf = tree.buf,
+    get_pos = function()
+      if self.reference_mode or not tree:is_open() then return nil end
+      local line = tree.node_lines[node.id]
+      local row = line and tree.rows[line]
+      if not row then return nil end
+      local has_children = row.node.children and #row.node.children > 0 or false
+      local folded = tree.folded[row.node.id]
+      if folded == nil then folded = row.node.expanded == false end
+      return {
+        row = line,
+        col = Renderer.symbol_name_end({ node = row.node, depth = row.depth, has_children = has_children, folded = folded }),
+      }
+    end,
+  }
+end
+
 --- Commit a sole LSP result without creating a sidebar or discarding symbol state.
 function View:jump_single(node, win)
   if not win or not vim.api.nvim_win_is_valid(win) then return false end

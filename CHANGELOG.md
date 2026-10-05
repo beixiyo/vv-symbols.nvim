@@ -1,15 +1,32 @@
 # Changelog
 
+## 0.2.0 - 2026-10-04
+
+### 新增
+
+- LSP 位置请求新增延迟 150ms 的等待帧，`locations()` 可用 `loading_target`（`{ buf, get_pos }`）指定落点
+- `quickfix.replace_native`（默认 `true`）接管原生 quickfix / loclist 窗口，可设为 `false` 关闭
+- 新增 `mouse.goto_definition` / `mouse.underline`
+- `locations.include_declaration` 单独控制位置列表与 `peek()` 引用请求是否包含声明，默认 `nil` 跟随 `references.include_declaration`
+
+### 变更
+
+- `VVSymbolsPreview` 默认链接 `CurSearch` 跟随主题
+
+### Fixed
+
+- 焦点在非文件窗口时，同 tab 可见的非浮动文件窗也显示引用计数
+- 位置 / 诊断列表计数不再包含文件分组标题
+
 ## 0.1.1 - 2026-09-30
 
 ### 新增
 
-- `peek()` / `:VVSymbolsPeek`：浮窗预览光标符号的 LSP 位置；目标文件以只读快照展示，多结果在浮窗内 `]p` / `[p` 环形切换，`Enter` 确认跳转并保留 jumplist/tagstack 语义，`q` / `Esc` 关闭
-- `lens.callable_only`（默认 `false`）：默认所有导出符号（含变量/常量）显示引用计数并纳入自动查询；设为 `true` 回到仅函数等可调用符号。`references.start` 相应新增 `callable_only` 参数
+- 新增 `peek()` / `:VVSymbolsPeek` 只读浮窗预览，支持多结果循环切换、确认跳转与关闭，保留 jumplist / tagstack 语义
+- 新增 `lens.callable_only` 与 `references.start` 的同名参数：默认 `false` 为所有导出符号计数，设为 `true` 回到仅可调用符号
 
 ### Fixed
 
-- `callable_only=false` 时，无导出识别语言的顶层非可调用符号（markdown 标题等）不得再凭「导出未知」豁免进入引用计数；该豁免始终仅对顶层可调用符号生效
+- 无导出识别语言的顶层计数豁免仅适用于可调用符号，`callable_only = false` 不再误纳入标题等非可调用符号
 
 ## 0.1.0 - 2026-09-18
-

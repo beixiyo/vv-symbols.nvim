@@ -43,6 +43,8 @@ exports; arrow functions and function expressions assigned to
 variables are recognized, including HOC-style identifier-call wrappers such as `memo(() => …)` (method calls like
 `list.map(() => …)` are not).
 - Keep shortcut hints fixed at the bottom, with arrow navigation, folding, and `g?` help.
+- Take over native quickfix / loclist windows by default: native windows opened by `:copen`, `:lopen`, etc. are closed and shown in the sidebar instead, with loclists bound to their owning code window; set `quickfix.replace_native = false` to opt out.
+- VS Code-style Ctrl+click go to definition (same implementation as `locations({ method = 'definition' })`: a single result jumps directly, multiple results open the list), with identifiers underlined while hovering with Ctrl held; only intercepted in regular file windows with a definition-capable LSP client, set `mouse = false` to opt out.
 
 ## Installation and configuration
 
@@ -97,11 +99,30 @@ return {
       },
       locations = {
         jump_single_result = true, -- Jump directly to a single definition/reference/etc.; no results stay silent
+        -- Whether references in location lists (grr, etc.) and peek include declarations; nil follows
+        -- references.include_declaration. Only affects references requests, never lens counts.
+        -- true matches VS Code Find All References: in TypeScript it also lists definitions and import lines
+        include_declaration = nil,
+      },
+      -- Ctrl+mouse; mouse = false disables everything
+      mouse = {
+        -- Normal-mode Ctrl+click goes to definition. true calls locations({ method = 'definition' });
+        -- a function(ctx) ... end runs a custom jump (ctx = { buf, win }; the clicked window is current and
+        -- the cursor is already at the click position)
+        goto_definition = true,
+        -- Underline identifiers (VVSymbolsLink) while moving the mouse with Ctrl held; ranges come from
+        -- 'iskeyword' only, no LSP request. Turns 'mousemoveevent' on when off and restores it by ownership on disable
+        underline = true,
+      },
+      quickfix = {
+        -- Close native quickfix/loclist windows when they open, return to the owning code window and open
+        -- the sidebar instead; skipped when the owner is invalid or itself a quickfix window
+        replace_native = true,
       },
       references = {
         concurrency = 4,           -- Maximum concurrent automatic reference queries
         max_symbols = 200,         -- Maximum symbols with automatic counts
-        include_declaration = false, -- Exclude declaration locations from reference counts
+        include_declaration = false, -- Lens counts exclude declarations; location lists follow unless locations.include_declaration is set
       },
       timing = {
         debounce_ms = 250,   -- Debounce analysis after source edits
@@ -169,6 +190,20 @@ The symbol tree matches symbol names. Location lists match file paths, result co
 
 In the input box, `Shift-Tab` switches matching modes, `Ctrl-N/P` moves through results, `Enter` accepts the filter, and `Esc` restores the previous query. Invalid regex patterns keep the last valid results. Clearing the filter restores the previous fold state.
 
+## Highlight groups
+
+All groups are registered with `default = true`, so colorscheme or user definitions take precedence; they are reapplied after the colorscheme changes.
+
+| Group | Default |
+|---|---|
+| `VVSymbolsPreview` | Landing spot in list previews and peek: links to `CurSearch`, so the color follows your colorscheme; override with `nvim_set_hl` to style it separately |
+| `VVSymbolsName` / `VVSymbolsKind` | Links to `Normal` / `Type` |
+| `VVSymbolsLens` | Links to `Comment` |
+| `VVSymbolsReferenceIcon` / `VVSymbolsReferenceCount` | Links to `Special` / `VVSymbolsReferenceIcon` |
+| `VVSymbolsZeroReferences` | Links to `DiagnosticError` |
+| `VVSymbolsLink` | Jumpable identifier while hovering with Ctrl held: links to `Underlined` |
+| `VVSymbolsReferenceMatch` | Empty (reference ranges are not marked inside lists) |
+
 ## Common commands
 
 | Command | Action |
@@ -183,3 +218,13 @@ In the input box, `Shift-Tab` switches matching modes, `Ctrl-N/P` moves through 
 | `:VVSymbolsLensEnable` / `:VVSymbolsLensDisable` | Enable/disable reference hints in source files |
 
 For more APIs and configuration types, see [config.lua](lua/vv-symbols/config.lua) and [init.lua](lua/vv-symbols/init.lua).
+
+## Development tests
+
+```sh
+./tests/run.sh [literal-filter]
+```
+
+Requires Unix-like OS, Neovim 0.12+, Git, POSIX shell and existing `vv-utils.nvim` source. `VV_UTILS` and `NVIM_BIN` can override discovery and the executable. The full suite needs existing `vv-splits.nvim` source (`VV_TEST_SPLITS`, test-only), plus `lua`, `luadoc`, `typescript` and `tsx` parsers. Set `VV_TEST_PARSERS` or `VV_TEST_SITE` to their runtime root. Highlight queries must include `lua`, `luadoc`, `typescript`, `tsx` and inherited `ecma` / `jsx`, plus Lua's LuaDoc injection query; they are taken from site or existing nvim-treesitter source (`VV_TEST_QUERIES` override). No language server is required by the fixtures.
+
+The shared runner uses isolated children without personal configuration. Dependency discovery, CI checkouts and isolation are documented in the [shared test guide](https://github.com/beixiyo/vv-utils.nvim/blob/main/dev/test/README.md). Headless tests do not replace TUI verification; CI needs an outer job timeout.

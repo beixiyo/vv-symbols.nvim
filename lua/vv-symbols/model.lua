@@ -284,10 +284,12 @@ function M.normalize(opts)
   return roots
 end
 
+-- 文件分组节点（位置列表 / 诊断按文件归组的标题行）只是容器，不计入条目数，
+-- 否则 winbar 的 count/total 会把每个文件多算一次（602 条引用显示成 1204）
 local function count_nodes(nodes)
   local count = 0
   for _, node in ipairs(nodes or {}) do
-    count = count + 1 + count_nodes(node.children)
+    count = count + (node.file_group and 0 or 1) + count_nodes(node.children)
   end
   return count
 end
@@ -342,7 +344,7 @@ function M.filter(opts)
     for _, node in ipairs(nodes or {}) do
       local name_matches = predicate(node.name or '')
       local matched = (matched_file or name_matches) and kind_matches(node)
-      if matched then count = count + 1 end
+      if matched and not node.file_group then count = count + 1 end
 
       -- File paths select their results; symbol ancestors do not broaden matching.
       -- Kind/severity restrictions still apply independently to every child.
@@ -418,6 +420,6 @@ return M
 
 ---@class VVSymbolsFilterResult
 ---@field nodes VVSymbolsNode[] 保留上下文后的新树
----@field count integer 命中的节点数，不含 context_only 节点
----@field total integer 输入树中的节点总数
+---@field count integer 命中的条目数，不含 context_only 节点与 file_group 分组节点
+---@field total integer 输入树中的条目总数，不含 file_group 分组节点
 ---@field valid boolean regex 是否有效

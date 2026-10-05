@@ -9,6 +9,9 @@ local Lens = require('vv-symbols.lens')
 local Panel = require('vv-symbols.panel')
 local Lists = require('vv-symbols.lists')
 local Peek = require('vv-symbols.peek')
+local Highlights = require('vv-symbols.highlights')
+local NativeQf = require('vv-symbols.native_qf')
+local Mouse = require('vv-symbols.mouse')
 local M = {}
 local config = Config.normalize()
 local enabled = false
@@ -160,6 +163,8 @@ local function make_view()
           line = pos.line,
           byte_col = vim.str_byteindex(line, node.encoding or 'utf-16', pos.character, false),
         },
+        -- 源码可能不在任何窗口中，等待帧放在面板所选符号名后
+        loading_target = view:loading_target(node),
       })
     end,
     on_back = function(buf) M.open({ buf = buf }) end,
@@ -285,7 +290,8 @@ local function source_buffer()
 end
 
 ---查询源码光标的 LSP 位置，默认 references；cursor 使用零基字节列
----@param opts? {method?:string,buf?:integer,cursor?:table,client_id?:integer}
+---首次结果前在 loading_target 显示等待帧，缺省为源码光标标识符末尾
+---@param opts? {method?:string,buf?:integer,cursor?:table,client_id?:integer,loading_target?:VVSymbolsLoadingTarget}
 function M.locations(opts)
   opts = opts or {}
   local buf = opts.buf or vim.api.nvim_get_current_buf()
@@ -295,6 +301,7 @@ function M.locations(opts)
     kind = opts.method or 'references',
     buf = buf,
     client_id = opts.client_id,
+    loading_target = opts.loading_target,
     cursor = opts.cursor or { line = cursor[1] - 1, byte_col = cursor[2] },
   })
 end
@@ -318,6 +325,7 @@ function M.peek(opts)
     client_id = opts.client_id,
     cursor = cursor,
     timeout_ms = config.timing.timeout_ms,
+    include_declaration = config.locations.include_declaration,
     peek = config.peek,
   })
 end
@@ -418,27 +426,56 @@ local function unmap_triggers()
 end
 
 ---启用事件订阅，幂等；仅按 config.peek.keys.trigger 注册 buffer-local 触发键，不注册全局快捷键
+---quickfix.replace_native 为 true 时接管原生 quickfix/loclist 窗口，disable 时移除
+---config.mouse 开启时安装全局 <C-LeftMouse> / <C-MouseMove> 映射（同键已有全局映射则跳过），disable 时移除
 function M.enable()
   if enabled then return end
   enabled = true
-  require('vv-utils.hl').register('VVSymbolsHighlights', {
-    VVSymbolsName = { link = 'Normal' },
-    VVSymbolsKind = { link = 'Type' },
-    VVSymbolsLens = { link = 'Comment' },
-    VVSymbolsReferenceIcon = { link = 'Special' },
-    -- 列表内引用范围不再加视觉标记（落点高亮只保留在 preview 侧）
-    VVSymbolsReferenceMatch = {},
-    VVSymbolsReferenceCount = { link = 'VVSymbolsReferenceIcon' },
-    VVSymbolsZeroReferences = { link = 'DiagnosticError' },
-    -- 落点实心块：跟随主题的「当前搜索匹配」语义（实心底 + 深色字），不借语法色，避免与代码撞色
-    VVSymbolsPreview = { link = 'CurSearch' },
+  Highlights.attach()
+  if config.quickfix.replace_native then
+    NativeQf.attach({
+      open = function(ctx)
+        if ctx.kind == 'loclist' then
+          M.loclist({ win = ctx.win })
+        else
+          M.quickfix()
+        end
+      end,
+    })
+  end
+
+  local goto_definition = config.mouse.goto_definition
+  Mouse.attach({
+    goto_definition = goto_definition ~= false,
+    underline = config.mouse.underline,
+    on_definition = type(goto_definition) == 'function' and goto_definition
+      or function(ctx) M.locations({ buf = ctx.buf, method = 'definition' }) end,
   })
 
   group = vim.api.nvim_create_augroup('VVSymbols', { clear = true })
+  -- 焦点在源码时只跟随当前 buffer，避免并排分屏互相抢占唯一会话；焦点在非文件窗口
+  -- （Git 面板、文件树等）时，当前 tab 内非浮动窗口可见的真实文件也可成为会话
+  -- 符号侧栏在当前 tab 打开时由它驱动会话，其跨文件预览不得切源
+  local function followable(buf)
+    local current = vim.api.nvim_get_current_buf()
+    if current == buf then return true end
+    if eligible(current) then return false end
+    local tab = vim.api.nvim_get_current_tabpage()
+
+    if view and view:is_open() and vim.api.nvim_win_get_tabpage(view.tree.win) == tab then return false end
+
+    for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+      if vim.api.nvim_win_get_tabpage(win) == tab and vim.api.nvim_win_get_config(win).relative == '' then
+        return true
+      end
+    end
+    return false
+  end
+
   local function follow(ev)
     local buf = ev.buf
     vim.schedule(function()
-      if not wanted() or not eligible(buf) or vim.api.nvim_get_current_buf() ~= buf then return end
+      if not wanted() or not eligible(buf) or not followable(buf) then return end
       if view and view:is_open() and view.reference_mode then return end
       local current = source(buf)
       if not current.tick or current.tick ~= vim.api.nvim_buf_get_changedtick(buf) or ev.event == 'LspAttach' then
@@ -446,6 +483,7 @@ function M.enable()
       end
     end)
   end
+
   vim.api.nvim_create_autocmd({ 'BufEnter', 'LspAttach' }, { group = group, callback = follow })
   vim.api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI', 'BufWritePost', 'LspDetach' }, {
     group = group,
@@ -490,16 +528,22 @@ function M.disable()
     vim.api.nvim_del_augroup_by_id(group)
     group = nil
   end
-  pcall(vim.api.nvim_del_augroup_by_name, 'VVSymbolsHighlights')
+
+  Highlights.detach()
+  NativeQf.detach()
+  Mouse.detach()
   release_session()
+
   if lists then
     lists:stop()
     lists = nil
   end
+
   if view then
     view:close()
     view = nil
   end
+
   Peek.close()
   unmap_triggers()
   Lens.clear_all()

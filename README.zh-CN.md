@@ -39,6 +39,8 @@ vv-symbols 将符号、引用、定义、实现、诊断、quickfix 和 loclist 
 - 源码中显示引用数量，可放在符号上方或行末；默认所有导出符号（含变量/常量）都显示，`callable_only = true` 可仅限函数等可调用符号
 - 导出识别覆盖 `export function/class/const`、再导出子句与默认导出。导出类本身计入引用目标（通过 `new` 调用），类成员属于类内部 API，不算模块导出；变量赋值的箭头函数与函数表达式均可识别，包括 `memo(() => …)` 这类具名调用包装（方法调用如 `list.map(() => …)` 不算）
 - 固定底部快捷键提示，支持方向键、折叠操作和 `g?` 帮助
+- 默认接管原生 quickfix / loclist 窗口：`:copen`、`:lopen` 等打开的原生窗口会被关闭，改在侧栏展示，loclist 绑定所属代码窗口；`quickfix.replace_native = false` 可关闭
+- VS Code 式 Ctrl+左键跳转定义（与 `locations({ method = 'definition' })` 同一实现，单结果直接跳、多结果进列表），按住 Ctrl 悬停时给标识符加下划线；只在有 definition 能力 LSP 的普通文件窗口拦截，`mouse = false` 可关闭
 
 ## 安装与配置
 
@@ -92,11 +94,29 @@ return {
       },
       locations = {
         jump_single_result = true, -- 单个定义/引用/实现等直接跳转；零结果静默结束
+        -- 位置列表（grr 等）与 peek 的 references 是否包含声明；nil 跟随 references.include_declaration
+        -- 只影响 references 请求，不影响 lens 计数。true 与 VS Code Find All References 一致：
+        -- TypeScript 下会同时列出定义与 import 行
+        include_declaration = nil,
+      },
+      -- Ctrl+鼠标；mouse = false 全部关闭
+      mouse = {
+        -- 普通模式 Ctrl+左键跳转定义。true 调用 locations({ method = 'definition' })；
+        -- 也可传 function(ctx) ... end 自定义跳转（ctx = { buf, win }，回调前已切窗并把光标放在点击处）
+        goto_definition = true,
+        -- 按住 Ctrl 移动鼠标时给标识符加下划线（VVSymbolsLink）；只按 'iskeyword' 算范围，不发 LSP 请求
+        -- 'mousemoveevent' 关闭时会打开它，disable 时按所有权关回
+        underline = true,
+      },
+      quickfix = {
+        -- 原生 quickfix/loclist 窗口打开时关闭它，回到所属代码窗口改开侧栏；
+        -- 所属窗口无效或本身是 quickfix 时不接管
+        replace_native = true,
       },
       references = {
         concurrency = 4,           -- 自动引用查询的最大并发数
         max_symbols = 200,         -- 自动计数的符号上限
-        include_declaration = false, -- 引用计数不包含声明位置
+        include_declaration = false, -- lens 引用计数不包含声明位置；位置列表未设 locations.include_declaration 时跟随
       },
       timing = {
         debounce_ms = 250,   -- 源码编辑后重新分析的防抖
@@ -162,6 +182,20 @@ nvim-ufo 用户可配置 `fold_virt_text_handler` 拼接 chunks（ufo 更新循�
 
 输入框中，`Shift-Tab` 切换匹配模式，`Ctrl-N/P` 移动结果，`Enter` 接受筛选，`Esc` 恢复输入前的查询。非法正则保留上次有效结果；清除筛选后恢复原折叠状态
 
+## 高亮组
+
+全部以 `default = true` 注册，colorscheme 或用户先定义的值优先，切换主题后重新应用
+
+| 高亮组 | 默认 |
+|---|---|
+| `VVSymbolsPreview` | 列表预览与 peek 的落点：链接 `CurSearch`，颜色跟随主题；想单独改用 `nvim_set_hl` 覆盖 |
+| `VVSymbolsName` / `VVSymbolsKind` | 链接 `Normal` / `Type` |
+| `VVSymbolsLens` | 链接 `Comment` |
+| `VVSymbolsReferenceIcon` / `VVSymbolsReferenceCount` | 链接 `Special` / `VVSymbolsReferenceIcon` |
+| `VVSymbolsZeroReferences` | 链接 `DiagnosticError` |
+| `VVSymbolsLink` | 按住 Ctrl 悬停的可跳转标识符：链接 `Underlined` |
+| `VVSymbolsReferenceMatch` | 空（列表内不标记引用范围） |
+
 ## 常用命令
 
 | 命令 | 动作 |
@@ -176,3 +210,13 @@ nvim-ufo 用户可配置 `fold_virt_text_handler` 拼接 chunks（ufo 更新循�
 | `:VVSymbolsLensEnable` / `:VVSymbolsLensDisable` | 开启/关闭源码引用提示 |
 
 更多 API 与配置类型见 [config.lua](lua/vv-symbols/config.lua) 和 [init.lua](lua/vv-symbols/init.lua)
+
+## 开发测试
+
+```sh
+./tests/run.sh [literal-filter]
+```
+
+要求 Unix-like 系统、Neovim 0.12+、Git、POSIX shell 和已有的 `vv-utils.nvim` 源码；可用 `VV_UTILS`、`NVIM_BIN` 覆盖发现与可执行文件。完整套件需要已有的 `vv-splits.nvim` 源码（`VV_TEST_SPLITS`，仅测试依赖）和 `lua`、`luadoc`、`typescript`、`tsx` parser；可用 `VV_TEST_PARSERS` 或 `VV_TEST_SITE` 指定 runtime 根。高亮查询须包含 `lua`、`luadoc`、`typescript`、`tsx` 及继承的 `ecma` / `jsx`，还需 Lua 的 LuaDoc 注入查询；从 site 或已有 nvim-treesitter 源码接入（可用 `VV_TEST_QUERIES` 覆盖）。Fixture 不需要语言服务器
+
+共享入口使用隔离 child，不加载个人配置。依赖发现、CI 检出与隔离契约见 [共享测试说明](https://github.com/beixiyo/vv-utils.nvim/blob/main/dev/test/README.zh-CN.md)。Headless 不替代真实 TUI 验证；CI 需设置外层 job timeout
