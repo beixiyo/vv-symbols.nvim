@@ -65,7 +65,6 @@ return {
         width = 42,           -- Initial width; manual resizing preserves the new width
         position = 'left',    -- 'left' / 'right'
         preview = true,       -- Preview source as the cursor moves
-        state = false,        -- Pass a vv-utils.state handle to persist the width
       },
       filter = {
         mode = 'subseq',      -- Subsequence; also 'fixed' substring or 'regex'
@@ -142,8 +141,6 @@ return {
   },
 }
 ```
-
-Icons and reference counts use the theme's `Special` color; zero references use `DiagnosticError`. `0 references` means the LSP found no references, not that the code is safe to delete. `…` indicates a pending query, and `?` indicates failure or timeout.
 
 ### Reference counts on folded lines (nvim-ufo)
 

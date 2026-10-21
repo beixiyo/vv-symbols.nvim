@@ -61,7 +61,6 @@ return {
         width = 42,           -- 初始宽度，手动 resize 后保留新宽度
         position = 'left',    -- 'left' / 'right'
         preview = true,       -- 移动光标时预览源码
-        state = false,        -- 可传入 vv-utils.state handle 持久化宽度
       },
       filter = {
         mode = 'subseq',      -- 子序列；也支持 'fixed' 子串、'regex' 正则
@@ -136,8 +135,6 @@ return {
   },
 }
 ```
-
-图标与引用数字使用主题的 `Special` 颜色，零引用使用 `DiagnosticError`。`0 references` 表示 LSP 未找到引用，不代表代码可以安全删除；`…` 表示查询中，`?` 表示查询失败或超时
 
 ### 折叠行上的引用计数（nvim-ufo）
 

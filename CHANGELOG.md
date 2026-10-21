@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 - 2026-10-21
+
+### Changed
+
+- `nil` 表示未配置、取默认值，`false` 表示禁用
+- `get_config().mouse` 与 `get_config().peek.keys` 在设为 `false` 时保持 `false`，不再展开为逐项 `false` 的表
+- 输入类型统一为 `VVSymbolsOpts`，由 `VVSymbolsConfig` 派生
+- `peek.open()` 的 `peek` 参数改为必填，不再在内部回退到默认配置
+
+### Breaking
+
+- `panel.state` 改由 `setup(opts, deps)` 的 `deps.state` 注入，默认持久化宽度，不再接受 `panel.state = false`
+- setup() 不再返回配置，需要时用 get_config()
+
+### Fixed
+
+- 直接向 `peek.open()` 传入 `peek.keys = false` 时，浮窗内键位改为全部禁用，不再回退为默认键位
+
 ## 0.2.0 - 2026-10-04
 
 ### 新增

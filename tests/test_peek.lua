@@ -45,12 +45,15 @@ T['peek 预览、确认、恢复与过期响应'] = function()
       }
     end
 
+    local peek_config = require('vv-symbols.config').normalize().peek
+
     local function open(opts)
       opts = opts or {}
       Peek.open({
         method = opts.method or 'implementation',
         buf = source_buf,
         cursor = opts.cursor or { line = 0, byte_col = 6 },
+        peek = peek_config,
       })
       local request = requests[#requests]
       request.callback(nil, {
@@ -140,9 +143,9 @@ T['peek 预览、确认、恢复与过期响应'] = function()
     assert(#notices == 1 and notices[1].level == vim.log.levels.INFO, '零结果应有 INFO 提示')
 
     -- 过期响应：新请求取消旧请求，慢到的旧结果不得写回
-    Peek.open({ method = 'implementation', buf = source_buf, cursor = { line = 0, byte_col = 6 } })
+    Peek.open({ method = 'implementation', buf = source_buf, cursor = { line = 0, byte_col = 6 }, peek = peek_config })
     local stale = requests[#requests]
-    Peek.open({ method = 'implementation', buf = source_buf, cursor = { line = 0, byte_col = 6 } })
+    Peek.open({ method = 'implementation', buf = source_buf, cursor = { line = 0, byte_col = 6 }, peek = peek_config })
     local current = requests[#requests]
     current.callback(nil, {
       locations = { location(impl_b, 1, 9) },

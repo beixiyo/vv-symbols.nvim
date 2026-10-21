@@ -406,7 +406,7 @@ end
 ---在 buffer 上注册 peek 触发键（buffer-local）；已注册或未配置时跳过
 ---@param buf integer
 local function map_trigger(buf)
-  local lhs = config.peek.keys.trigger
+  local lhs = config.peek.keys and config.peek.keys.trigger
   if not lhs or trigger_bufs[buf] or not eligible(buf) then return end
   trigger_bufs[buf] = lhs
   vim.keymap.set('n', lhs, function() M.peek({ buf = buf }) end, { buffer = buf, desc = 'vv-symbols: peek' })
@@ -444,10 +444,11 @@ function M.enable()
     })
   end
 
-  local goto_definition = config.mouse.goto_definition
+  local mouse = config.mouse
+  local goto_definition = mouse and mouse.goto_definition
   Mouse.attach({
-    goto_definition = goto_definition ~= false,
-    underline = config.mouse.underline,
+    goto_definition = goto_definition ~= false and mouse ~= false,
+    underline = mouse and mouse.underline or false,
     on_definition = type(goto_definition) == 'function' and goto_definition
       or function(ctx) M.locations({ buf = ctx.buf, method = 'definition' }) end,
   })
@@ -550,9 +551,13 @@ function M.disable()
 end
 
 ---归一化配置并启用插件；重复 setup 先释放旧实例
----@param opts? table 默认值见 VVSymbolsConfig
-function M.setup(opts)
+---@param opts? VVSymbolsOpts 默认值见 VVSymbolsConfig
+---@param deps? VVSymbolsDeps 运行时依赖（如 state），不属于用户配置
+function M.setup(opts, deps)
   local normalized = Config.normalize(opts)
+
+  -- 派生值：合并后再赋值，由第二参数 deps 注入的 state 保持原引用
+  normalized.panel.state = (deps and deps.state) or require('vv-utils.state').register('vv-symbols', 'panel')
   M.disable()
   config, lens_enabled = normalized, normalized.lens.enabled
   local commands = {

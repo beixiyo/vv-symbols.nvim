@@ -309,7 +309,7 @@ local function copy_node(node)
 end
 
 --- 按名称和符号类型过滤树，并为命中的后代保留祖先上下文
----@param opts VVSymbolsFilterOpts
+---@param opts VVSymbolsModelFilterOpts
 ---@return VVSymbolsFilterResult
 function M.filter(opts)
   opts = opts or {}
@@ -412,7 +412,7 @@ return M
 ---@field exported boolean 是否由源代码确认属于模块导出 API
 ---@field context_only? boolean
 
----@class VVSymbolsFilterOpts
+---@class VVSymbolsModelFilterOpts
 ---@field nodes VVSymbolsNode[]
 ---@field query? string @default ''
 ---@field mode? 'subseq'|'fixed'|'regex' @default 'subseq'

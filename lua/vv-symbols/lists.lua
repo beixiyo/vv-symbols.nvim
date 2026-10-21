@@ -235,10 +235,7 @@ function Lists:open(ctx)
   self:stop()
   ctx.root = canonical_root(ctx.buf)
   self.context = ctx
-  ctx.awaiting_single = lsp_location_kinds[ctx.kind]
-      and self.config.locations
-      and self.config.locations.jump_single_result
-    or false
+  ctx.awaiting_single = lsp_location_kinds[ctx.kind] and self.config.locations.jump_single_result or false
   self.scope = Async.scope({ cancel_previous = true })
   track_cursor(ctx)
   self.group = vim.api.nvim_create_augroup('VVSymbolsLists', { clear = true })

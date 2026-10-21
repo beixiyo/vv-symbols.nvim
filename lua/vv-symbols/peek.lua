@@ -68,7 +68,7 @@ local function geometry(peek)
 end
 
 ---把动作名键位表翻译为 ui_peek 的 lhs → 回调；false 的项不注册
----@param mapping VVSymbolsPeekKeys
+---@param mapping VVSymbolsPeekKeysConfig|false false 全部禁用
 ---@return table<string, fun()>
 local function keys(mapping)
   local actions = {
@@ -77,6 +77,7 @@ local function keys(mapping)
     prev = function() M.select(-1) end,
   }
   local result = {}
+  if not mapping then return result end
   for action, callback in pairs(actions) do
     if mapping[action] then result[mapping[action]] = callback end
   end
@@ -112,7 +113,7 @@ local function configure(peek)
     border = peek.border,
     hl = { line = 'CursorLine', range = 'VVSymbolsPreview' },
     on_close = function() state = nil end,
-    keys = keys(peek.keys or require('vv-symbols.config').normalize().peek.keys),
+    keys = keys(peek.keys),
   }))
 end
 
@@ -136,14 +137,14 @@ local function show(location)
 end
 
 ---查询并在浮窗预览光标符号的 LSP 位置
----@param opts {method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek?:table}
+---@param opts {method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek:VVSymbolsPeekConfig}
 function M.open(opts)
   local method = opts.method or 'implementation'
   if not titles[method] then
     vim.notify(('vv-symbols: peek does not support %s'):format(method), vim.log.levels.WARN)
     return
   end
-  configure(opts.peek or require('vv-symbols.config').normalize().peek)
+  configure(opts.peek)
 
   local current = vim.api.nvim_get_current_win()
   local info = UiPeek.current()

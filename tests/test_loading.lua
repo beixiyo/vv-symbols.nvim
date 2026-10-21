@@ -19,6 +19,7 @@ T['LSP 等待帧落点与终结释放'] = function()
     }
     local plugin = require('vv-symbols')
     local Peek = require('vv-symbols.peek')
+    local peek_config = require('vv-symbols.config').normalize().peek
     plugin.setup({ lens = { enabled = false }, locations = { jump_single_result = true }, timing = { debounce_ms = 5 } })
 
     ---buffer 内全部 inline 虚拟文本：{ row, col, text }，row/col 零基
@@ -120,12 +121,12 @@ T['LSP 等待帧落点与终结释放'] = function()
 
     -- S2：peek 等待帧落点同 S1；新一次 peek 停掉旧帧，旧请求的晚到回调不影响新帧，结果到达后消失
     vim.api.nvim_set_current_buf(source)
-    Peek.open({ method = 'definition', buf = source, cursor = { line = 1, byte_col = 11 } })
+    Peek.open({ method = 'definition', buf = source, cursor = { line = 1, byte_col = 11 }, peek = peek_config })
     local first = pending[#pending]
     settle()
     shown = frames(source)
     assert(#shown == 1 and shown[1].row == 1 and shown[1].col == 18, vim.inspect(shown))
-    Peek.open({ method = 'definition', buf = source, cursor = { line = 1, byte_col = 21 } })
+    Peek.open({ method = 'definition', buf = source, cursor = { line = 1, byte_col = 21 }, peek = peek_config })
     local second = pending[#pending]
     settle()
     shown = frames(source)
@@ -138,7 +139,7 @@ T['LSP 等待帧落点与终结释放'] = function()
     Peek.close(false)
 
     -- S2：等待中关闭 peek 停止帧
-    Peek.open({ method = 'definition', buf = source, cursor = { line = 1, byte_col = 11 } })
+    Peek.open({ method = 'definition', buf = source, cursor = { line = 1, byte_col = 11 }, peek = peek_config })
     settle()
     assert(#frames(source) == 1)
     Peek.close(false)
