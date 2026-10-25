@@ -35,7 +35,7 @@ vv-symbols 将符号、引用、定义、实现、诊断、quickfix 和 loclist 
 - 符号树支持名称与类型筛选，可快速切换为仅显示函数（类也算可调用）
 - 位置列表按文件分组，自动压缩长路径、去除代码两侧空白，保留 Tree-sitter 语法高亮
 - 移动列表光标实时预览源码，确认跳转或退出时恢复原位置
-- `gp` 浮窗预览光标符号的 LSP 位置（`require('vv-symbols').peek()`）：类型名上看声明体，其余先看实现、无结果时看定义；多结果 ]p / [p 切换，Enter 确认跳转。`gp` 由插件在 LSP attach 时注册为 buffer-local 键（会覆盖内置 `gp`），可通过 `peek.keys` 改键或禁用
+- `gp` 浮窗预览光标符号的 LSP 位置（`require('vv-symbols').peek()`）：类型名上看声明体，其余先看实现、无结果或查询失败时看定义；多结果 ]p / [p 切换，Enter 确认跳转。`gp` 由插件在 LSP attach 时注册为 buffer-local 键（会覆盖内置 `gp`），可通过 `peek.keys` 改键或禁用
 - 源码中显示引用数量，可放在符号上方或行末；默认所有导出符号（含变量/常量）都显示，`callable_only = true` 可仅限函数等可调用符号
 - 导出识别覆盖 `export function/class/const`、再导出子句与默认导出。导出类本身计入引用目标（通过 `new` 调用），类成员属于类内部 API，不算模块导出；变量赋值的箭头函数与函数表达式均可识别，包括 `memo(() => …)` 这类具名调用包装（方法调用如 `list.map(() => …)` 不算）
 - 固定底部快捷键提示，支持方向键、折叠操作和 `g?` 帮助
@@ -85,7 +85,7 @@ return {
         height_ratio = 0.75, -- 占 editor 可用行数比例
         border = 'rounded',  -- 浮窗边框
         -- peek() 未传 method 时的查询方法：'auto' 在类型名（interface/type/enum 等语义 token）上查 definition，
-        -- 其余先查 implementation，结果为空时回退 definition；也可固定为 'definition' / 'implementation' 等
+        -- 其余先查 implementation，结果为空或查询失败时回退 definition；也可固定为 'definition' / 'implementation' 等
         method = 'auto',
         -- 快捷键：trigger 在 LSP attach 的普通文件 buffer 上注册（buffer-local，会覆盖内置 gp）；
         -- confirm / next / prev 作用于浮窗内。逐项 false 禁用，keys = false 全部禁用

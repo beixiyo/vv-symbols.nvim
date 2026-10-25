@@ -279,4 +279,55 @@ T['实际关闭预览时取消在途请求并释放等待帧'] = function()
   end)
 end
 
+T['auto 首选查询报错时回退定义，显式查询保留实际错误'] = function()
+  child.lua_func(function()
+    local requests, notices = {}, {}
+    package.loaded['vv-symbols.lsp'] = {
+      locations = function(opts, callback)
+        requests[#requests + 1] = { method = opts.method, callback = callback }
+        return function() end
+      end,
+    }
+    vim.notify = function(message) notices[#notices + 1] = message end
+    local Peek = require('vv-symbols.peek')
+    local UiPeek = require('vv-utils.ui_peek')
+    local buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'web.Assets()' })
+    local path = vim.env.VV_TEST_TMP .. '/assets.go'
+    vim.fn.writefile({ 'package web', 'func Assets() {}' }, path)
+    local opts = {
+      method = 'implementation', fallback_method = 'definition', buf = buf,
+      cursor = { line = 0, byte_col = 4 }, peek = require('vv-symbols.config').normalize().peek,
+    }
+    -- 真实 gopls 对普通函数返回错误，而不是空 implementation 列表
+    local err = { code = 0, message = "Assets is a function, not a method (query at 'func' token to find matching signatures)" }
+    Peek.open(opts)
+    requests[1].callback(err)
+    assert(#requests == 2 and requests[2].method == 'definition', 'auto 首选报错必须继续查询定义')
+    assert(#notices == 0, '成功回退前不应显示首选查询错误')
+    requests[2].callback(nil, {
+      encoding = 'utf-16',
+      locations = { { uri = vim.uri_from_fname(path), range = {
+        start = { line = 1, character = 5 }, ['end'] = { line = 1, character = 11 },
+      } } },
+    })
+    assert(Peek.is_open(), '回退定义成功必须打开预览')
+    assert(vim.api.nvim_buf_get_lines(UiPeek.current().buf, 1, 2, false)[1] == 'func Assets() {}', '必须预览定义文件')
+    Peek.close(true)
+
+    opts.fallback_method = nil
+    Peek.open(opts)
+    requests[3].callback(err)
+    assert(#requests == 3 and not Peek.is_open(), '显式 implementation 不应悄悄回退')
+    assert(notices[1] == 'vv-symbols: ' .. err.message, '错误对象应显示服务端消息而不是 table 地址')
+
+    opts.fallback_method = 'definition'
+    Peek.open(opts)
+    requests[4].callback(err)
+    requests[5].callback({ code = -32603, message = 'definition failed' })
+    assert(#requests == 5 and not Peek.is_open(), '后备失败应终止，不能循环回退')
+    assert(notices[2] == 'vv-symbols: definition failed', '最终错误应显示后备查询的消息')
+  end)
+end
+
 return T

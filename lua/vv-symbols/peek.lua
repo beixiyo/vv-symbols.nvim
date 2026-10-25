@@ -191,24 +191,31 @@ function M.open(opts)
       pending = false
       if revision ~= token then return end
       state.cancel = nil
+
       local locations = result and result.locations or {}
-      if not err and #locations == 0 and fallback_method then
+      -- gopls 对普通函数、变量和包名会返回查询错误，而非空实现列表
+      -- 只有调用方提供后备方法（auto）时回退；显式查询仍报告错误
+      if fallback_method and (err or #locations == 0) then
         query(fallback_method)
         return
       end
+
       -- 整条查询链终结时才停止等待帧；过期回调不能影响新请求
       if handle then handle:stop() end
       if err then
         M.close(true)
-        vim.notify(('vv-symbols: %s'):format(err), vim.log.levels.WARN)
+        local message = type(err) == 'table' and (err.message or vim.inspect(err)) or tostring(err)
+        vim.notify(('vv-symbols: %s'):format(message), vim.log.levels.WARN)
         return
       end
+
       if #locations == 0 then
         M.close(true)
         local label = query_method:gsub('(%a)(%u)', '%1 %2'):lower()
         vim.notify(('No %s found'):format(label), vim.log.levels.INFO)
         return
       end
+
       state.locations = locations
       state.index = 1
       state.encoding = result.encoding
