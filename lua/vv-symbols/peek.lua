@@ -105,6 +105,22 @@ local function hints(peek, total)
   return result
 end
 
+local function stop_loading()
+  if loading then loading:stop() end
+  loading = nil
+end
+
+---释放查询会话；不操作浮窗，供主动关闭与 UI 关闭回调共同使用
+local function release_session()
+  if not state and not loading then return end
+  local active = state
+  state = nil
+  -- 先使响应失效，再取消请求，避免取消过程触发的回调访问已释放状态
+  revision = revision + 1
+  stop_loading()
+  if active and active.cancel then pcall(active.cancel) end
+end
+
 ---把 vv-symbols 的 peek 配置翻译为 ui_peek 的几何与键位策略；同表幂等
 local function configure(peek)
   if configured == peek then return end
@@ -112,14 +128,9 @@ local function configure(peek)
   UiPeek.setup(vim.tbl_extend('force', geometry(peek), {
     border = peek.border,
     hl = { line = 'CursorLine', range = 'VVSymbolsPreview' },
-    on_close = function() state = nil end,
+    on_close = release_session,
     keys = keys(peek.keys),
   }))
-end
-
-local function stop_loading()
-  if loading then loading:stop() end
-  loading = nil
 end
 
 local function show(location)
@@ -137,7 +148,7 @@ local function show(location)
 end
 
 ---查询并在浮窗预览光标符号的 LSP 位置
----@param opts {method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek:VVSymbolsPeekConfig}
+---@param opts {method?:string,fallback_method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek:VVSymbolsPeekConfig}
 function M.open(opts)
   local method = opts.method or 'implementation'
   if not titles[method] then
@@ -165,42 +176,53 @@ function M.open(opts)
   local handle = target and Loading.start(target)
   loading = handle
 
-  local cancel = Lsp.locations({
-    method = method,
-    buf = opts.buf,
-    cursor = opts.cursor,
-    client_id = opts.client_id,
-    timeout_ms = opts.timeout_ms,
-    include_declaration = opts.include_declaration,
-  }, function(err, result)
-    -- 过期回调只停自己的帧；新一次 peek 已在发起时停掉旧帧并持有自己的 handle
-    if handle then handle:stop() end
-    if revision ~= token then return end
-    state.cancel = nil
-    if err then
-      M.close(true)
-      vim.notify(('vv-symbols: %s'):format(err), vim.log.levels.WARN)
-      return
-    end
-    local locations = result and result.locations or {}
-    if #locations == 0 then
-      M.close(true)
-      local label = method:gsub('(%a)(%u)', '%1 %2'):lower()
-      vim.notify(('No %s found'):format(label), vim.log.levels.INFO)
-      return
-    end
-    state.locations = locations
-    state.index = 1
-    state.encoding = result.encoding
-    show(locations[1])
-  end)
-  if revision == token then state.cancel = cancel end
+  local function query(query_method, fallback_method)
+    state.method = query_method
+    -- locations 也可能同步回调；不能用已完成请求的 cancel 覆盖后备请求
+    local pending = true
+    local cancel = Lsp.locations({
+      method = query_method,
+      buf = opts.buf,
+      cursor = opts.cursor,
+      client_id = opts.client_id,
+      timeout_ms = opts.timeout_ms,
+      include_declaration = opts.include_declaration,
+    }, function(err, result)
+      pending = false
+      if revision ~= token then return end
+      state.cancel = nil
+      local locations = result and result.locations or {}
+      if not err and #locations == 0 and fallback_method then
+        query(fallback_method)
+        return
+      end
+      -- 整条查询链终结时才停止等待帧；过期回调不能影响新请求
+      if handle then handle:stop() end
+      if err then
+        M.close(true)
+        vim.notify(('vv-symbols: %s'):format(err), vim.log.levels.WARN)
+        return
+      end
+      if #locations == 0 then
+        M.close(true)
+        local label = query_method:gsub('(%a)(%u)', '%1 %2'):lower()
+        vim.notify(('No %s found'):format(label), vim.log.levels.INFO)
+        return
+      end
+      state.locations = locations
+      state.index = 1
+      state.encoding = result.encoding
+      show(locations[1])
+    end)
+    if pending and revision == token then state.cancel = cancel end
+  end
+  query(method, opts.fallback_method)
 end
 
 ---把 'auto' 解析为具体方法：光标处语义 token 是类型时查 definition，否则 implementation
 ---
 ---类型名上 implementation 只返回实现它的 class 或对象字面量，看不到成员声明；
----不用 type_definition：它会把别名解析到底层类型，交叉/联合等匿名类型返回空。
+---不用 type_definition：它会把别名解析到底层类型，交叉/联合等匿名类型返回空
 ---服务端无语义 token 或 token 未就绪时保持 implementation
 ---@param buf integer
 ---@param cursor {line:integer,byte_col:integer} 零基行与字节列
@@ -224,10 +246,7 @@ end
 ---关闭浮窗、取消进行中的请求；focus_source 默认回源窗口
 ---@param focus_source? boolean
 function M.close(focus_source)
-  local active = state
-  state = nil
-  stop_loading()
-  if active and active.cancel then pcall(active.cancel) end
+  release_session()
   UiPeek.close(focus_source)
 end
 

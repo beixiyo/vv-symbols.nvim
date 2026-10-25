@@ -21,6 +21,7 @@ end
 
 local function action_label(view, action)
   if action == 'back' then return 'back to symbols' end
+  if action == 'close' and action_available(view, 'back') then return 'back to symbols' end
   if action == 'kind' and view.data.mode == 'diagnostics' then return 'severity' end
   return action
 end
@@ -248,7 +249,13 @@ function M.new(opts)
         end,
         back = function() view:back() end,
         refresh = opts.on_refresh,
-        close = function() view:close() end,
+        close = function()
+          if action_available(view, 'back') then
+            view:back()
+          else
+            view:close()
+          end
+        end,
         open = function() jump(view, selected(view)) end,
         help = function()
           require('vv-utils.help_panel').open({

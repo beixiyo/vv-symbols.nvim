@@ -198,4 +198,85 @@ T['peek 预览、确认、恢复与过期响应'] = function()
   end)
 end
 
+T['实际关闭预览时取消在途请求并释放等待帧'] = function()
+  child.lua_func(function()
+    local requests = {}
+    package.loaded['vv-symbols.lsp'] = {
+      locations = function(opts, callback)
+        local request = { method = opts.method, callback = callback, cancelled = 0 }
+        requests[#requests + 1] = request
+        return function()
+          request.cancelled = request.cancelled + 1
+          -- 取消期间同步到达的响应也必须先失效，不能继续发起后备查询
+          callback(nil, { locations = {} })
+        end
+      end,
+    }
+    local Loading = require('vv-symbols.loading')
+    local start = Loading.start
+    local handle
+    Loading.start = function(target)
+      handle = start(target)
+      return handle
+    end
+    local Peek = require('vv-symbols.peek')
+    local UiPeek = require('vv-utils.ui_peek')
+    local peek_config = require('vv-symbols.config').normalize().peek
+    local base = vim.api.nvim_get_current_win()
+    local path = vim.env.VV_TEST_TMP .. '/target.lua'
+    vim.fn.writefile({ 'function target() end' }, path)
+    local result = {
+      encoding = 'utf-16',
+      locations = { {
+        uri = vim.uri_from_fname(path),
+        range = { start = { line = 0, character = 9 }, ['end'] = { line = 0, character = 15 } },
+      } },
+    }
+    for _, close in ipairs({ 'q', '<Esc>', '<CR>', 'source_window' }) do
+      for _, fallback in ipairs({ false, true }) do
+        vim.api.nvim_set_current_win(base)
+        vim.cmd('vsplit')
+        local source = vim.api.nvim_get_current_win()
+        local buf = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_win_set_buf(source, buf)
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'target()' })
+        local function open()
+          Peek.open({
+            method = 'implementation',
+            fallback_method = fallback and 'definition' or nil,
+            buf = buf,
+            cursor = { line = 0, byte_col = 0 },
+            peek = peek_config,
+          })
+        end
+        open()
+        requests[#requests].callback(nil, result)
+        local snapshot = assert(UiPeek.current())
+        -- 从源码重新查询；旧预览仍可关闭或确认，新的结果尚未到达
+        vim.api.nvim_set_current_win(source)
+        open()
+        if fallback then requests[#requests].callback(nil, { locations = {} }) end
+        local pending = requests[#requests]
+        assert(handle:is_active(), '在途查询应持有等待帧')
+        if close == 'source_window' then
+          vim.api.nvim_win_close(source, true)
+        else
+          vim.api.nvim_set_current_win(snapshot.win)
+          vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(close, true, false, true), 'xt', false)
+        end
+        assert(pending.cancelled == 1, close .. ' 应恰好取消一次当前请求')
+        assert(not handle:is_active(), close .. ' 应停止等待帧')
+        assert(not UiPeek.is_open() and not Peek.is_open(), close .. ' 应关闭预览会话')
+        assert(not vim.api.nvim_buf_is_valid(snapshot.buf), close .. ' 应释放快照')
+        -- 物理取消也可能挡不住已在事件队列中的响应
+        pending.callback(nil, result)
+        assert(not UiPeek.is_open(), '迟到响应不得重建浮窗或抛出空状态异常')
+        Peek.close(true)
+        assert(pending.cancelled == 1, '重复关闭不得重复取消已清理请求')
+        if vim.api.nvim_win_is_valid(source) then vim.api.nvim_win_close(source, true) end
+      end
+    end
+  end)
+end
+
 return T

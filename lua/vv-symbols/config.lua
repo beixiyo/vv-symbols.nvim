@@ -22,7 +22,7 @@ local defaults = {
     callable_only = false,
   },
   peek = {
-    size = 'content',
+    size = 'screen',
     width_ratio = 0.8,
     height_ratio = 0.75,
     border = 'rounded',
@@ -201,11 +201,11 @@ return M
 ---@field replace_native boolean 原生 quickfix/loclist 窗口打开（:copen / :lopen 等）时关闭它，回到所属代码窗口并改开 quickfix() / loclist({ win }) 面板；所属窗口无效或本身是 quickfix 时不接管 @default true
 
 ---@class VVSymbolsPeekConfig
----@field size 'content'|'screen' 宽高来源：'content' 按内容自适应、两个比例只作上限；'screen' 直接取比例作为实际宽高 @default 'content'
+---@field size 'content'|'screen' 宽高来源：'content' 按内容自适应、两个比例只作上限；'screen' 直接取比例作为实际宽高 @default 'screen'
 ---@field width_ratio number 宽度比例，基准为 editor 列数 @default 0.8
 ---@field height_ratio number 高度比例，基准为 editor 可用行数 @default 0.75
 ---@field border string|table 浮窗边框 @default 'rounded'
----@field method 'auto'|'definition'|'declaration'|'implementation'|'type_definition'|'references' peek() 未传 method 时的查询方法；'auto' 在类型名（interface/type/typeParameter/enum/struct 语义 token）上查 definition 看声明体，其余查 implementation @default 'auto'
+---@field method 'auto'|'definition'|'declaration'|'implementation'|'type_definition'|'references' peek() 未传 method 时的查询方法；'auto' 在类型名（interface/type/typeParameter/enum/struct 语义 token）上查 definition 看声明体，其余查 implementation，结果为空时回退 definition @default 'auto'
 ---@field keys VVSymbolsPeekKeysConfig|false 快捷键，逐项 false 禁用，整体 false 全部禁用
 ---@field hints boolean 浮窗底部边框显示按键提示（Jump / Next / Prev / Close，跟随 keys 实际配置；单结果不显示 Next / Prev；窄窗口整条丢弃尾部） @default true
 

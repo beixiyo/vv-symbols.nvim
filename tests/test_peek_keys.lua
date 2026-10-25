@@ -110,4 +110,79 @@ T['peek 自定义按键与位置方法'] = function()
   end)
 end
 
+T['auto 在实现为空时预览定义，固定方法不回退，关闭后忽略后备响应'] = function()
+  child.lua_func(function()
+    local requests = {}
+    package.loaded['vv-symbols.lsp'] = {
+      symbols = function() return function() end end,
+      locations = function(opts, callback)
+        local request = { method = opts.method, callback = callback }
+        requests[#requests + 1] = request
+        return function() request.cancelled = true end
+      end,
+    }
+    local plugin = require('vv-symbols')
+    local Peek = require('vv-symbols.peek')
+    plugin.setup({ lens = { enabled = false } })
+    vim.notify = function() end
+
+    local path = vim.env.VV_TEST_TMP .. '/lifecycle.go'
+    vim.fn.writefile({ 'package signaling', 'func runCleanupLoop() {}' }, path)
+    local buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_name(buf, vim.env.VV_TEST_TMP .. '/server.go')
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { 'go runCleanupLoop()' })
+    vim.api.nvim_win_set_cursor(0, { 1, 5 })
+    local result = {
+      encoding = 'utf-16',
+      locations = { {
+        uri = vim.uri_from_fname(path),
+        range = { start = { line = 1, character = 5 }, ['end'] = { line = 1, character = 19 } },
+      } },
+    }
+
+    -- gopls 在普通具体方法上返回空实现，但 definition 能定位到函数体。
+    plugin.peek()
+    assert(requests[1].method == 'implementation', 'auto 应先查实现')
+    requests[1].callback(nil, { locations = {} })
+    assert(#requests == 2 and requests[2].method == 'definition', '空实现应触发定义查询')
+    requests[2].callback(nil, result)
+    assert(Peek.is_open(), '后备定义应打开预览')
+    assert(vim.api.nvim_get_current_line() == 'func runCleanupLoop() {}', '预览应落在定义函数体')
+    Peek.close(true)
+
+    local count = #requests
+    plugin.peek({ method = 'implementation' })
+    requests[#requests].callback(nil, { locations = {} })
+    assert(#requests == count + 1 and not Peek.is_open(), '显式 implementation 为空不得回退')
+
+    plugin.peek()
+    requests[#requests].callback(nil, result)
+    assert(#requests == count + 2 and Peek.is_open(), '有实现时应直接显示，不查询定义')
+    Peek.close(true)
+
+    plugin.peek()
+    requests[#requests].callback(nil, { locations = {} })
+    local fallback = requests[#requests]
+    Peek.close(true)
+    assert(fallback.cancelled, '关闭时应取消后备请求')
+    fallback.callback(nil, result)
+    assert(not Peek.is_open(), '关闭后到达的定义响应不得重建浮窗')
+
+    -- 同步空响应不能让旧 cancel 覆盖正在等待的后备查询。
+    local locations = package.loaded['vv-symbols.lsp'].locations
+    package.loaded['vv-symbols.lsp'].locations = function(opts, callback)
+      if opts.method == 'implementation' then
+        callback(nil, { locations = {} })
+        return function() end
+      end
+      return locations(opts, callback)
+    end
+    plugin.peek()
+    fallback = requests[#requests]
+    Peek.close(true)
+    assert(fallback.cancelled, '同步空实现回调后仍应持有后备请求的取消函数')
+    plugin.disable()
+  end)
+end
+
 return T

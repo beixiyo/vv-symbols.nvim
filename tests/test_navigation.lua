@@ -56,7 +56,9 @@ T['结果导航、折叠分组与方向键策略'] = function()
     key('<Right>')
     assert(vim.api.nvim_get_current_win() ~= tree.win, '结果上按 Right 应进入源码')
     assert(vim.api.nvim_get_current_buf() == other, 'Right 应打开所选文件')
-    view:close()
+    vim.api.nvim_set_current_win(tree.win)
+    key('q')
+    assert(not view:is_open(), '直接打开的引用列表没有上级，q 应关闭')
   end)
 end
 

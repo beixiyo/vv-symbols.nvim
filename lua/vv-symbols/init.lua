@@ -317,10 +317,12 @@ function M.peek(opts)
   local win_cursor = vim.api.nvim_win_get_cursor(0)
   local cursor = opts.cursor or { line = win_cursor[1] - 1, byte_col = win_cursor[2] }
   local method = opts.method or config.peek.method
-  if method == 'auto' then method = Peek.resolve_method(buf, cursor) end
+  local auto = method == 'auto'
+  if auto then method = Peek.resolve_method(buf, cursor) end
 
   Peek.open({
     method = method,
+    fallback_method = auto and method == 'implementation' and 'definition' or nil,
     buf = buf,
     client_id = opts.client_id,
     cursor = cursor,

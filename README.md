@@ -35,7 +35,7 @@ vv-symbols brings symbols, references, definitions, implementations, diagnostics
 - Filter the symbol tree by name and type, with a quick toggle for functions only (classes count as callable).
 - Browse locations grouped by file, with shortened paths, trimmed code snippets, and Tree-sitter syntax highlighting.
 - Preview source as the list cursor moves, then confirm the jump or exit to restore the original position.
-- `gp` peeks the cursor symbol's LSP location in a floating window (`require('vv-symbols').peek()`): declarations for type names, implementations otherwise; cycle multiple results with ]p / [p, Enter to jump. The plugin registers `gp` as a buffer-local key on LSP attach (overriding the built-in `gp`); change or disable it with `peek.keys`.
+- `gp` peeks the cursor symbol's LSP location in a floating window (`require('vv-symbols').peek()`): declarations for type names, implementations otherwise, falling back to definitions when empty; cycle multiple results with ]p / [p, Enter to jump. The plugin registers `gp` as a buffer-local key on LSP attach (overriding the built-in `gp`); change or disable it with `peek.keys`.
 - Display reference counts above symbols or at the end of their definition lines; every exported symbol by default (variables/constants included), or exported callables only with `callable_only = true`.
 - Export detection covers `export function/class/const`, re-export clauses and default exports. Exported classes count as
 reference targets themselves (invoked via `new`), while their members are class-internal API and never count as module
@@ -85,12 +85,12 @@ return {
         -- Where the size comes from: 'content' fits the content and treats both ratios as caps
         -- (height never drops below half the screen); 'screen' uses the ratios as the actual size.
         -- Both ratios are relative to the whole editor (terminal)
-        size = 'content',
+        size = 'screen',
         width_ratio = 0.8,   -- Share of editor columns
         height_ratio = 0.75, -- Share of available editor lines
         border = 'rounded',  -- Peek window border
         -- Method used when peek() gets none: 'auto' queries definition on type names
-        -- (interface/type/enum... semantic tokens) and implementation otherwise; or pin one, e.g. 'definition'
+        -- (interface/type/enum... semantic tokens) and implementation otherwise, falling back to definition when empty; or pin one, e.g. 'definition'
         method = 'auto',
         -- trigger is registered buffer-local on LSP attach to file buffers (overrides the built-in gp);
         -- confirm / next / prev act inside the float. false disables one key, keys = false disables all
@@ -167,7 +167,7 @@ A working handler lives in my dotfiles:
 | `l/→` | Expand and select the first result; enter source when on a result |
 | `Enter` | Confirm the jump and keep the sidebar open |
 | `gf` | Confirm the jump and close the sidebar |
-| `q/Esc` | Exit; restore the original position if the preview was not confirmed |
+| `q/Esc` | Return to the parent symbol tree when available, otherwise exit; exiting restores unconfirmed previews |
 | `Tab` | Toggle folding |
 | `zR/zM` | Expand/collapse all |
 | `/` | Enter a filter |
