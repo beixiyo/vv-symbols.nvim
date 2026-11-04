@@ -33,17 +33,34 @@ local function title(location)
   return ('%s%s · %s:%d'):format(label, count, path, location.range.start.line + 1)
 end
 
----确认当前结果：关闭浮窗并在源窗口跳转，保留 jumplist/tagstack 语义
+---确认当前结果：关闭浮窗并在源窗口跳转到浮窗光标行，保留 jumplist/tagstack 语义
+---跳转落点取浮窗光标当前行
 local function commit()
   local active = state
   if not active or not active.locations then return end
   local location = active.locations[active.index]
+
+  -- 浮窗快照 buffer 随 close 释放，必须先取光标再关闭
+  local range = location.range
+  local peek = UiPeek.current()
+
+  if peek and vim.api.nvim_win_is_valid(peek.win) then
+    local cursor = vim.api.nvim_win_get_cursor(peek.win)
+    local line = vim.api.nvim_buf_get_lines(peek.buf, cursor[1] - 1, cursor[1], false)[1] or ''
+    local character = vim.str_utfindex(line, active.encoding or 'utf-16', math.min(cursor[2], #line), false)
+    range = {
+      start = { line = cursor[1] - 1, character = character },
+      ['end'] = { line = cursor[1] - 1, character = character },
+    }
+  end
+
   UiPeek.close(false)
   if not location then return end
   if vim.api.nvim_win_is_valid(active.source_win) then
     vim.api.nvim_set_current_win(active.source_win)
   end
-  vim.lsp.util.show_document({ uri = location.uri, range = location.range }, active.encoding or 'utf-16', {
+
+  vim.lsp.util.show_document({ uri = location.uri, range = range }, active.encoding or 'utf-16', {
     focus = true,
   })
 end
@@ -73,6 +90,7 @@ end
 local function keys(mapping)
   local actions = {
     confirm = commit,
+    jump = commit,
     next = function() M.select(1) end,
     prev = function() M.select(-1) end,
   }
@@ -85,18 +103,27 @@ local function keys(mapping)
 end
 
 ---底部按键提示：只列出真实注册的键；单结果时 next/prev 无操作，不展示
----顺序即截断优先级，窄窗口先丢弃末尾的 Close
+---confirm 与 jump 合并为一条 Jump 提示；顺序即截断优先级，窄窗口先丢弃末尾的 Close
 ---@param peek VVSymbolsPeekConfig
 ---@param total integer 当前结果数
 ---@return VVKeyHint[]
 local function hints(peek, total)
   local mapping = peek.keys or {}
   local result = {}
-  if mapping.confirm then result[#result + 1] = { key = mapping.confirm, desc = 'Jump' } end
+
+  -- confirm 与 jump 同为跳转动作，合并为一条提示（↵/gf Jump）
+  local jump_keys = {}
+  if mapping.confirm then jump_keys[#jump_keys + 1] = mapping.confirm end
+  if mapping.jump then jump_keys[#jump_keys + 1] = mapping.jump end
+  if #jump_keys > 0 then
+    result[#result + 1] = { key = table.concat(jump_keys, '/'), desc = 'Jump' }
+  end
+
   if total > 1 then
     if mapping.next then result[#result + 1] = { key = mapping.next, desc = 'Next' } end
     if mapping.prev then result[#result + 1] = { key = mapping.prev, desc = 'Prev' } end
   end
+
   -- 关闭键由 ui_peek 注册，以它的实际配置为准
   local close_keys = UiPeek.get_config().close_keys
   if type(close_keys) == 'table' and close_keys[1] then

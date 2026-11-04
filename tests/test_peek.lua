@@ -86,15 +86,15 @@ T['peek 预览、确认、恢复与过期响应'] = function()
       return table.concat(parts)
     end
 
-    -- 底部提示只列真实生效的键：单结果时 ]p / [p 无操作，不展示
-    assert(footer_text(peek_win) == ' ↵ Jump  q Close ', '单结果 footer 应只提示确认与关闭：' .. footer_text(peek_win))
+    -- 底部提示只列真实生效的键：单结果时 ]p / [p 无操作，不展示；confirm 与 jump 合并为一条
+    assert(footer_text(peek_win) == ' ↵/gf Jump  q Close ', '单结果 footer 应只提示跳转与关闭：' .. footer_text(peek_win))
 
     -- 多结果切换：]p / [p 环形切换并复用同一浮窗与快照 buffer
     open({ locations = { location(impl_a, 1, 9), location(impl_b, 1, 9) } })
     assert(vim.fn.win_getid(vim.fn.winnr()) == peek_win, '新结果应复用同一浮窗')
     assert(vim.api.nvim_win_get_buf(peek_win) == snapshot, '复用会话应复用同一快照 buffer')
     assert(
-      footer_text(peek_win) == ' ↵ Jump  ]p Next  [p Prev  q Close ',
+      footer_text(peek_win) == ' ↵/gf Jump  ]p Next  [p Prev  q Close ',
       '多结果 footer 应提示切换键：' .. footer_text(peek_win)
     )
     Peek.select(1)
@@ -134,6 +134,31 @@ T['peek 预览、确认、恢复与过期响应'] = function()
       '确认应把源窗口切到目标文件'
     )
     assert(vim.deep_equal(vim.api.nvim_win_get_cursor(source_win), { 2, 9 }), '确认应跳到实现范围起点')
+    vim.api.nvim_win_set_buf(source_win, source_buf)
+
+    -- 浮窗内浏览后确认：跳到浮窗光标当前行，而非 location 范围起点
+    open({ locations = { location(impl_a, 1, 9) } })
+    local browse_win = vim.fn.win_getid(vim.fn.winnr())
+    vim.api.nvim_win_set_cursor(browse_win, { 4, 0 })
+    key('<CR>')
+    assert(
+      vim.deep_equal(vim.api.nvim_win_get_cursor(source_win), { 4, 0 }),
+      '浏览后确认应跳到浮窗光标行'
+    )
+    vim.api.nvim_win_set_buf(source_win, source_buf)
+
+    -- gf 同样触发跳转
+    open({ locations = { location(impl_b, 1, 9) } })
+    local gf_win = vim.fn.win_getid(vim.fn.winnr())
+    vim.api.nvim_win_set_cursor(gf_win, { 3, 0 })
+    key('gf')
+    assert(not Peek.is_open(), 'gf 后浮窗应关闭')
+    assert(
+      vim.uv.fs_realpath(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(source_win)))
+        == vim.uv.fs_realpath(impl_b),
+      'gf 应把源窗口切到目标文件'
+    )
+    assert(vim.deep_equal(vim.api.nvim_win_get_cursor(source_win), { 3, 0 }), 'gf 应跳到浮窗光标行')
     vim.api.nvim_win_set_buf(source_win, source_buf)
 
     -- 零结果：不打开浮窗并给出提示
