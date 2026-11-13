@@ -93,8 +93,14 @@ return {
         -- (interface/type/enum... semantic tokens) and implementation otherwise, falling back to definition when empty or failed; or pin one, e.g. 'definition'
         method = 'auto',
         -- trigger is registered buffer-local on LSP attach to file buffers (overrides the built-in gp);
-        -- confirm / next / prev act inside the float. false disables one key, keys = false disables all
-        keys = { trigger = 'gp', confirm = '<CR>', next = ']p', prev = '[p' },
+        -- confirm / jump / next / prev act inside the float. false disables one key, keys = false disables all
+        -- The location-method keys (definition etc.) are also float-only: the float is a snapshot without LSP, so they
+        -- query the symbol under the float cursor again and replace the preview, keeping it when nothing is found;
+        -- trigger inside the float peeks again using `method`
+        keys = {
+          trigger = 'gp', confirm = '<CR>', jump = 'gf', next = ']p', prev = '[p',
+          definition = 'gd', declaration = 'gD', references = 'grr', implementation = 'gri', type_definition = 'grt',
+        },
       },
       locations = {
         jump_single_result = true, -- Jump directly to a single definition/reference/etc.; no results stay silent

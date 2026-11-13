@@ -20,10 +20,11 @@ local titles = {
 -- 语义 token 属于这些类型时，auto 查 definition 看声明体
 local TYPE_TOKENS = { interface = true, type = true, typeParameter = true, enum = true, struct = true }
 
-local state = nil ---@type table? { source_win, method, locations, index, encoding, cancel }
+local state = nil ---@type table? { source_win, method, locations, index, encoding, client_id, request, cancel }
 local revision = 0
 local loading = nil ---@type vv-utils.loading.Handle? 当前请求的等待帧；浮窗出现前它是唯一反馈
 local configured = nil
+local drill ---@type fun(method: string) 前置声明：keys() 引用，定义依赖 M.open
 
 local function title(location)
   local label = titles[state.method] or state.method
@@ -65,6 +66,51 @@ local function commit()
   })
 end
 
+---快照对应的真实文档 buffer：加载并确保产生该位置的 client 已 attach，供浮窗内继续查询
+---@param uri string
+---@param client_id? integer
+---@return integer? buf
+local function document_buffer(uri, client_id)
+  local buf = vim.uri_to_bufnr(uri)
+  if not vim.api.nvim_buf_is_loaded(buf) then pcall(vim.fn.bufload, buf) end
+  if not vim.api.nvim_buf_is_loaded(buf) then return nil end
+  -- 常规 FileType 流程可能已 attach；未 attach 时（文件从未打开过）交给返回该位置的 client
+  if client_id and vim.lsp.get_client_by_id(client_id) and not vim.lsp.buf_is_attached(buf, client_id) then
+    pcall(vim.lsp.buf_attach_client, buf, client_id)
+  end
+  return buf
+end
+
+---在浮窗内以光标处符号再次查询，结果替换当前浮窗内容；失败或无结果时保留当前预览
+---@param method string 位置方法，或 'auto'
+function drill(method)
+  local active = state
+  local peek = UiPeek.current()
+  if not active or not active.locations or not active.request then return end
+  if not peek or vim.api.nvim_get_current_win() ~= peek.win then return end
+
+  local location = active.locations[active.index]
+  local buf = document_buffer(location.uri, active.client_id)
+  if not buf then
+    vim.notify('vv-symbols: failed to load ' .. vim.uri_to_fname(location.uri), vim.log.levels.WARN)
+    return
+  end
+
+  local win_cursor = vim.api.nvim_win_get_cursor(peek.win)
+  local cursor = { line = win_cursor[1] - 1, byte_col = win_cursor[2] }
+  local fallback
+  method, fallback = M.plan(method, buf, cursor)
+  M.open(vim.tbl_extend('force', active.request, {
+    method = method,
+    fallback_method = fallback,
+    buf = buf,
+    cursor = cursor,
+    client_id = active.client_id,
+    -- 真实文档未必显示在任何窗口；等待帧画在快照 buffer 的同一位置
+    loading_buf = peek.buf,
+  }))
+end
+
 ---按 peek.size 选择宽高来源；比例基准都是整个 editor 的列数与可用行数
 --
 -- content：宽度取内容宽度、高度取目标范围 + 10 行（至少半屏），比例只作上限
@@ -93,7 +139,13 @@ local function keys(mapping)
     jump = commit,
     next = function() M.select(1) end,
     prev = function() M.select(-1) end,
+    -- 浮窗是无 LSP 的快照 buffer，源码 buffer 上的 buffer-local 键位到不了这里
+    -- 触发键与各位置方法在浮窗内单独注册，查询落到快照对应的真实文档
+    trigger = function() drill(configured.method) end,
   }
+  for method in pairs(titles) do
+    actions[method] = function() drill(method) end
+  end
   local result = {}
   if not mapping then return result end
   for action, callback in pairs(actions) do
@@ -175,7 +227,7 @@ local function show(location)
 end
 
 ---查询并在浮窗预览光标符号的 LSP 位置
----@param opts {method?:string,fallback_method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek:VVSymbolsPeekConfig}
+---@param opts {method?:string,fallback_method?:string,buf:integer,cursor:{line:integer,byte_col:integer},client_id?:integer,timeout_ms?:integer,include_declaration?:boolean,peek:VVSymbolsPeekConfig,loading_buf?:integer}
 function M.open(opts)
   local method = opts.method or 'implementation'
   if not titles[method] then
@@ -194,17 +246,17 @@ function M.open(opts)
     state.cancel = nil
   end
   if not state then state = { source_win = source_win } end
-  state.method = method
+  -- 浮窗内再次查询：失败或无结果时保留当前预览，不关闭浮窗
+  local keep = info ~= nil and info.win == current and state.locations ~= nil
   revision = revision + 1
   local token = revision
 
   stop_loading()
-  local target = Loading.cursor_target(opts.buf, function() return opts.cursor end)
+  local target = Loading.cursor_target(opts.loading_buf or opts.buf, function() return opts.cursor end)
   local handle = target and Loading.start(target)
   loading = handle
 
   local function query(query_method, fallback_method)
-    state.method = query_method
     -- locations 也可能同步回调；不能用已完成请求的 cancel 覆盖后备请求
     local pending = true
     local cancel = Lsp.locations({
@@ -230,27 +282,47 @@ function M.open(opts)
       -- 整条查询链终结时才停止等待帧；过期回调不能影响新请求
       if handle then handle:stop() end
       if err then
-        M.close(true)
+        if not keep then M.close(true) end
         local message = type(err) == 'table' and (err.message or vim.inspect(err)) or tostring(err)
         vim.notify(('vv-symbols: %s'):format(message), vim.log.levels.WARN)
         return
       end
 
       if #locations == 0 then
-        M.close(true)
+        if not keep then M.close(true) end
         local label = query_method:gsub('(%a)(%u)', '%1 %2'):lower()
         vim.notify(('No %s found'):format(label), vim.log.levels.INFO)
         return
       end
 
+      -- 结果落地后才切换会话内容：等待期间标题与 ]p / [p 仍对应旧结果
+      state.method = query_method
       state.locations = locations
       state.index = 1
       state.encoding = result.encoding
+      state.client_id = result.client_id
+      state.request = {
+        timeout_ms = opts.timeout_ms,
+        include_declaration = opts.include_declaration,
+        peek = opts.peek,
+      }
       show(locations[1])
     end)
     if pending and revision == token then state.cancel = cancel end
   end
   query(method, opts.fallback_method)
+end
+
+---把配置的查询方法解析为实际方法与后备方法；非 'auto' 原样返回、无后备
+---@param method string
+---@param buf integer
+---@param cursor {line:integer,byte_col:integer} 零基行与字节列
+---@return string method
+---@return string? fallback_method
+function M.plan(method, buf, cursor)
+  if method ~= 'auto' then return method, nil end
+  local resolved = M.resolve_method(buf, cursor)
+  return resolved, resolved == 'implementation' and 'definition' or nil
 end
 
 ---把 'auto' 解析为具体方法：光标处语义 token 是类型时查 definition，否则 implementation

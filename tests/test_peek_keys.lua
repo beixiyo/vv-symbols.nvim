@@ -185,4 +185,92 @@ T['auto 在实现为空时预览定义，固定方法不回退，关闭后忽略
   end)
 end
 
+T['浮窗内位置键查询快照对应的真实文档，无结果时保留当前预览'] = function()
+  child.lua_func(function()
+    local requests = {}
+    package.loaded['vv-symbols.lsp'] = {
+      symbols = function() return function() end end,
+      references = function() return function() end end,
+      locations = function(opts, callback)
+        requests[#requests + 1] = { opts = opts, callback = callback }
+        return function() end
+      end,
+    }
+    local plugin = require('vv-symbols')
+    plugin.setup({ lens = { enabled = false } })
+    local notified = {}
+    vim.notify = function(message) notified[#notified + 1] = message end
+
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, 'p')
+    vim.fn.writefile({ 'local impl = helper()', 'return impl' }, dir .. '/impl.lua')
+    vim.fn.writefile({ 'local function helper() end' }, dir .. '/helper.lua')
+    local function result(name, line, from, to)
+      return {
+        locations = { {
+          uri = vim.uri_from_fname(dir .. '/' .. name),
+          range = { start = { line = line, character = from }, ['end'] = { line = line, character = to } },
+        } },
+        count = 1,
+        encoding = 'utf-16',
+        client_id = 1,
+      }
+    end
+    local function press(keys)
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), 'xt', false)
+    end
+
+    local source = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_name(source, dir .. '/source.lua')
+    vim.api.nvim_buf_set_lines(source, 0, -1, false, { 'local iface = 1' })
+    vim.api.nvim_exec_autocmds('LspAttach', { buffer = source, data = { client_id = 1 } })
+    vim.api.nvim_win_set_cursor(0, { 1, 6 })
+    press('gp')
+    requests[#requests].callback(nil, result('impl.lua', 0, 6, 10))
+    local float_win = vim.api.nvim_get_current_win()
+    local float = vim.api.nvim_get_current_buf()
+    assert(float ~= source and vim.bo[float].buftype == 'nofile', 'peek 浮窗应打开并持有焦点')
+
+    -- 浮窗内 gd：请求落在 impl.lua 的真实 buffer 与浮窗光标位置
+    vim.api.nvim_win_set_cursor(float_win, { 1, 13 })
+    local before = #requests
+    press('gd')
+    assert(#requests == before + 1, '浮窗内 gd 应发起位置查询')
+    local request = requests[#requests]
+    assert(request.opts.method == 'definition', '浮窗内 gd 应查 definition')
+    assert(
+      vim.api.nvim_buf_get_name(request.opts.buf) == vim.uv.fs_realpath(dir .. '/impl.lua')
+        or vim.api.nvim_buf_get_name(request.opts.buf) == dir .. '/impl.lua',
+      '查询 buffer 应是快照对应的真实文件'
+    )
+    assert(request.opts.cursor.line == 0 and request.opts.cursor.byte_col == 13, '查询位置应取浮窗光标')
+    assert(request.opts.client_id == 1, '应沿用返回该位置的 client')
+
+    -- 结果替换同一浮窗的内容
+    request.callback(nil, result('helper.lua', 0, 15, 21))
+    assert(vim.api.nvim_get_current_win() == float_win, '结果应复用当前浮窗')
+    assert(
+      vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] == 'local function helper() end',
+      '浮窗内容应替换为新位置的文件'
+    )
+
+    -- 无结果：保留当前预览并提示
+    press('gri')
+    assert(requests[#requests].opts.method == 'implementation', '浮窗内 gri 应查 implementation')
+    requests[#requests].callback(nil, { locations = {}, count = 0, encoding = 'utf-16', client_id = 1 })
+    assert(vim.api.nvim_win_is_valid(float_win), '无结果时不应关闭浮窗')
+    assert(vim.api.nvim_get_current_win() == float_win, '无结果时焦点留在浮窗')
+    assert(
+      vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] == 'local function helper() end',
+      '无结果时保留当前预览内容'
+    )
+    assert(notified[#notified] == 'No implementation found', '无结果应提示')
+
+    -- 浮窗内触发键按 peek.method 再次预览
+    press('gp')
+    assert(requests[#requests].opts.method == 'implementation', '浮窗内 gp 无语义 token 时应查 implementation')
+    plugin.disable()
+  end)
+end
+
 return T

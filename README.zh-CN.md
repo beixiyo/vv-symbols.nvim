@@ -88,8 +88,13 @@ return {
         -- 其余先查 implementation，结果为空或查询失败时回退 definition；也可固定为 'definition' / 'implementation' 等
         method = 'auto',
         -- 快捷键：trigger 在 LSP attach 的普通文件 buffer 上注册（buffer-local，会覆盖内置 gp）；
-        -- confirm / next / prev 作用于浮窗内。逐项 false 禁用，keys = false 全部禁用
-        keys = { trigger = 'gp', confirm = '<CR>', next = ']p', prev = '[p' },
+        -- confirm / jump / next / prev 作用于浮窗内。逐项 false 禁用，keys = false 全部禁用
+        -- definition 等位置方法键也只在浮窗内注册：浮窗是无 LSP 的快照，这些键对光标符号再次查询并替换预览内容，
+        -- 无结果时保留当前预览；浮窗内的 trigger 按 method 再次预览
+        keys = {
+          trigger = 'gp', confirm = '<CR>', jump = 'gf', next = ']p', prev = '[p',
+          definition = 'gd', declaration = 'gD', references = 'grr', implementation = 'gri', type_definition = 'grt',
+        },
       },
       locations = {
         jump_single_result = true, -- 单个定义/引用/实现等直接跳转；零结果静默结束

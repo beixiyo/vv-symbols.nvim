@@ -8,7 +8,18 @@ local PEEK_METHODS = {
   type_definition = true,
   references = true,
 }
-local PEEK_ACTIONS = { trigger = true, confirm = true, jump = true, next = true, prev = true }
+local PEEK_ACTIONS = {
+  trigger = true,
+  confirm = true,
+  jump = true,
+  next = true,
+  prev = true,
+  definition = true,
+  declaration = true,
+  references = true,
+  implementation = true,
+  type_definition = true,
+}
 
 ---@type VVSymbolsConfig
 local defaults = {
@@ -27,7 +38,18 @@ local defaults = {
     height_ratio = 0.75,
     border = 'rounded',
     method = 'auto',
-    keys = { trigger = 'gp', confirm = '<CR>', jump = 'gf', next = ']p', prev = '[p' },
+    keys = {
+      trigger = 'gp',
+      confirm = '<CR>',
+      jump = 'gf',
+      next = ']p',
+      prev = '[p',
+      definition = 'gd',
+      declaration = 'gD',
+      references = 'grr',
+      implementation = 'gri',
+      type_definition = 'grt',
+    },
     hints = true,
   },
   locations = { jump_single_result = true },
@@ -210,11 +232,16 @@ return M
 ---@field hints boolean 浮窗底部边框显示按键提示（Jump / Next / Prev / Close，跟随 keys 实际配置；confirm 与 jump 合并为一条 Jump；单结果不显示 Next / Prev；窄窗口整条丢弃尾部） @default true
 
 ---@class VVSymbolsPeekKeysConfig
----@field trigger string|false 触发 peek 的 buffer-local 键，LSP attach 到普通文件 buffer 时注册（默认会覆盖内置 gp） @default 'gp'
+---@field trigger string|false 触发 peek 的 buffer-local 键，LSP attach 到普通文件 buffer 时注册（默认会覆盖内置 gp）；浮窗内同一个键按 peek.method 对光标符号再次预览 @default 'gp'
 ---@field confirm string|false 浮窗内确认跳转 @default '<CR>'
 ---@field jump string|false 浮窗内跳转（与 confirm 同效，叠加而非替换） @default 'gf'
 ---@field next string|false 浮窗内切到下一个结果 @default ']p'
 ---@field prev string|false 浮窗内切到上一个结果 @default '[p'
+---@field definition string|false 浮窗内查询光标符号的定义，结果替换当前预览；无结果时保留当前预览 @default 'gd'
+---@field declaration string|false 浮窗内查询声明，行为同 definition @default 'gD'
+---@field references string|false 浮窗内查询引用，行为同 definition @default 'grr'
+---@field implementation string|false 浮窗内查询实现，行为同 definition @default 'gri'
+---@field type_definition string|false 浮窗内查询类型定义，行为同 definition @default 'grt'
 
 ---setup 入参：VVSymbolsConfig 的递归 partial，缺省字段取默认值
 ---@class (partial) VVSymbolsOpts: VVSymbolsConfig
