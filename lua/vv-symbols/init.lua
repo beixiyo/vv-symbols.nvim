@@ -24,12 +24,25 @@ local function eligible(buf)
   return buf and vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == ''
 end
 
-local function wanted() return enabled and (lens_enabled or view and view:is_open() and not (lists and lists.context)) end
+---buf 是否显示引用计数
+---@param buf integer
+local function lens_for(buf)
+  if not lens_enabled then return false end
+  -- 防抖回调触发时 buffer 可能已被删除：读不到 filetype 就按未忽略处理，由后续的有效性检查收尾
+  if not vim.api.nvim_buf_is_valid(buf) then return true end
+  return not vim.tbl_contains(config.lens.ft_ignore, vim.bo[buf].filetype)
+end
+
+---是否需要分析 buf：要显示引用计数，或侧栏开着
+---@param buf integer
+local function wanted(buf)
+  return enabled and (lens_for(buf) or view and view:is_open() and not (lists and lists.context))
+end
 
 local function publish(current)
   if session ~= current or not eligible(current.buf) then return end
   if view and view:is_open() and not (lists and lists.context) then view:update(current) end
-  if lens_enabled then
+  if lens_for(current.buf) then
     Lens.render({
       buf = current.buf,
       nodes = current.nodes,
@@ -74,7 +87,7 @@ local function source(buf)
     scope = Async.scope({ cancel_previous = true }),
   }
   current.debounce, current.cancel_debounce = Timer.debounce(function(revision)
-    if session == current and current.revision == revision and wanted() then refresh_session(current) end
+    if session == current and current.revision == revision and wanted(current.buf) then refresh_session(current) end
   end, config.timing.debounce_ms)
   session = current
   return current
@@ -119,13 +132,16 @@ refresh_session = function(current)
     })
     current.status, current.error = 'ready', nil
     publish(current)
-    if not lens_enabled then return end
+
+    if not lens_for(current.buf) then return end
     local targets = {}
+
     for _, node in ipairs(Model.flatten(current.nodes)) do
       if Lens.matches(node, config.lens) then
         targets[#targets + 1] = vim.tbl_extend('force', node, { children = {} })
       end
     end
+
     cancel_refs = References.start({
       buf = current.buf,
       nodes = targets,
@@ -237,7 +253,7 @@ function M.refresh(opts)
     return
   end
   local buf = opts and opts.buf or session and session.buf or vim.api.nvim_get_current_buf()
-  if eligible(buf) and wanted() then refresh_session(source(buf)) end
+  if eligible(buf) and wanted(buf) then refresh_session(source(buf)) end
 end
 
 ---在侧栏开启名称输入
@@ -476,7 +492,7 @@ function M.enable()
   local function follow(ev)
     local buf = ev.buf
     vim.schedule(function()
-      if not wanted() or not eligible(buf) or not followable(buf) then return end
+      if not eligible(buf) or not wanted(buf) or not followable(buf) then return end
       if view and view:is_open() and view.reference_mode then return end
       local current = source(buf)
       if not current.tick or current.tick ~= vim.api.nvim_buf_get_changedtick(buf) or ev.event == 'LspAttach' then
@@ -490,7 +506,7 @@ function M.enable()
     group = group,
     callback = function(ev)
       local current = session
-      if not current or not wanted() then return end
+      if not current or not wanted(current.buf) then return end
       if ev.buf == current.buf or ev.event == 'BufWritePost' then
         invalidate(current)
         publish(current)

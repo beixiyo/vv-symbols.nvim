@@ -235,4 +235,82 @@ T['虚拟引用行的排布、过滤和边界'] = function()
   end)
 end
 
+T['ft_ignore 中的文件类型不显示也不查询引用计数，侧栏不受影响'] = function()
+  child.lua_func(function()
+    -- 样式表的「引用」只是同文件内同名选择器的出现次数，不代表被使用的次数
+    local symbol_requests, reference_requests = {}, 0
+    local range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 5 } }
+    package.loaded['vv-symbols.lsp'] = {
+      symbols = function(opts, cb)
+        symbol_requests[#symbol_requests + 1] = opts.buf
+        cb(nil, {
+          client_id = 1,
+          encoding = 'utf-16',
+          symbols = { { name = '.card', kind = 5, range = range, selectionRange = range } },
+        })
+        return function() end
+      end,
+      references = function(_, cb)
+        reference_requests = reference_requests + 1
+        cb(nil, { count = 0, locations = {}, encoding = 'utf-16' })
+        return function() end
+      end,
+    }
+
+    local Config = require('vv-symbols.config')
+    assert(vim.deep_equal(Config.normalize({}).lens.ft_ignore, { 'css', 'scss', 'less' }))
+    assert(vim.deep_equal(Config.normalize({ lens = { ft_ignore = { 'html' } } }).lens.ft_ignore, { 'html' }),
+      '传入时整体覆盖默认值')
+
+    local plugin = require('vv-symbols')
+    plugin.setup({ lens = { scope = 'all' }, timing = { debounce_ms = 10 } })
+    local namespace = vim.api.nvim_create_namespace('vv-symbols.lens')
+    local function marks(buf) return #vim.api.nvim_buf_get_extmarks(buf, namespace, 0, -1, {}) end
+
+    local function open(name, filetype)
+      local buf = vim.api.nvim_create_buf(true, false)
+      vim.api.nvim_buf_set_name(buf, vim.env.VV_TEST_TMP .. '/' .. name)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { '.card { color: red; }' })
+      vim.bo[buf].filetype = filetype
+      vim.api.nvim_set_current_buf(buf)
+      return buf
+    end
+
+    local css = open('lens-ignore.css', 'css')
+    plugin.refresh({ buf = css })
+    vim.wait(100, function() return false end)
+    assert(marks(css) == 0, 'css 不应渲染引用计数')
+    assert(reference_requests == 0 and #symbol_requests == 0, '被忽略的文件类型不应为 lens 发请求')
+
+    -- 侧栏照常工作，且仍不查询引用
+    plugin.open({ buf = css })
+    assert(#symbol_requests == 1 and symbol_requests[1] == css, '侧栏需要的符号请求不受 ft_ignore 影响')
+    vim.wait(50, function() return false end)
+    assert(marks(css) == 0 and reference_requests == 0)
+    plugin.close()
+
+    -- 对照：未被忽略的文件类型照常计数
+    local lua = open('lens-ignore.lua', 'lua')
+    plugin.refresh({ buf = lua })
+    assert(vim.wait(200, function() return marks(lua) == 1 end), '非忽略文件类型应渲染引用计数')
+    assert(reference_requests >= 1, '非忽略文件类型应查询引用')
+
+    -- 防抖期间 buffer 被删除：回调不得因读取已失效 buffer 的 filetype 而报错
+    local errors = {}
+    local schedule = vim.schedule
+    vim.schedule = function(fn)
+      return schedule(function()
+        local ok, err = pcall(fn)
+        if not ok then errors[#errors + 1] = err end
+      end)
+    end
+    vim.api.nvim_buf_set_lines(lua, 0, -1, false, { '.card { color: blue; }' })
+    vim.api.nvim_exec_autocmds('TextChanged', { buffer = lua })
+    vim.api.nvim_buf_delete(lua, { force = true })
+    vim.wait(100, function() return false end)
+    vim.schedule = schedule
+    assert(#errors == 0, vim.inspect(errors))
+  end)
+end
+
 return T

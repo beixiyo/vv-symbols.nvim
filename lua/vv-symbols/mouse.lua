@@ -15,7 +15,7 @@ local PRIORITY = 200
 local owned = {} ---@type table<string, table> 本模块安装且仍持有的全局映射
 local handlers = {} ---@type table<string, fun()> 处理函数 id → 回调
 local mark ---@type {buf:integer,row:integer,start_col:integer,end_col:integer}?
-local enabled_mousemoveevent = false
+local release_move_events ---@type fun()?
 local on_definition ---@type fun(ctx:VVSymbolsMouseContext)?
 
 local function global_map(lhs)
@@ -124,7 +124,7 @@ function M._run(id)
 end
 
 ---安装全局鼠标映射，幂等（先 detach 旧安装）；同键已有全局映射时不覆盖，跳过该键
----underline 开启且 'mousemoveevent' 关闭时打开它（终端只在该选项开启时上报无按键的移动）
+---underline 开启时持有 'mousemoveevent'（终端只在该选项开启时上报无按键的移动）
 ---@param opts {goto_definition:boolean,underline:boolean,on_definition:fun(ctx:VVSymbolsMouseContext)}
 function M.attach(opts)
   M.detach()
@@ -132,15 +132,12 @@ function M.attach(opts)
   if opts.goto_definition and not global_map(CLICK) then map(CLICK, 'click', on_click, accept_click) end
   if opts.underline and not global_map(MOVE) then
     map(MOVE, 'move', on_move)
-    if not vim.o.mousemoveevent then
-      vim.o.mousemoveevent = true
-      enabled_mousemoveevent = true
-    end
+    release_move_events = require('vv-utils.mouse').hold_move_events()
   end
 end
 
 ---移除下划线、on_key 订阅和仍由本模块持有的映射，幂等；映射已被他人改写时保留外部状态
----'mousemoveevent' 仅在由本模块打开、且没有其他 <MouseMove> 全局映射（如 vv-hover）依赖时关回
+---'mousemoveevent' 经 vv-utils.mouse 按持有者计数，其它插件（如 vv-hover）仍在使用时不会被关掉
 function M.detach()
   clear()
   for lhs, installed in pairs(owned) do
@@ -150,10 +147,10 @@ function M.detach()
     end
   end
   owned, handlers, on_definition = {}, {}, nil
-  if enabled_mousemoveevent and vim.o.mousemoveevent and not global_map('<MouseMove>') then
-    vim.o.mousemoveevent = false
+  if release_move_events then
+    release_move_events()
+    release_move_events = nil
   end
-  enabled_mousemoveevent = false
 end
 
 return M

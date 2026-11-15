@@ -304,6 +304,32 @@ function M.symbols(opts, callback)
   )
 end
 
+---@param range lsp.Range
+---@param position lsp.Position
+---@return boolean
+local function range_contains(range, position)
+  local s, e = range.start, range['end']
+  if type(s) ~= 'table' or type(e) ~= 'table' then return false end
+  if position.line < s.line or position.line > e.line then return false end
+  if position.line == s.line and position.character < s.character then return false end
+  if position.line == e.line and position.character > e.character then return false end
+  return true
+end
+
+---去掉声明自身：同一文档内覆盖查询位置的那一条
+---部分 server（如 vscode-css-languageserver）忽略 includeDeclaration=false，始终把声明算进引用
+---@param locations lsp.Location[]
+---@param uri string
+---@param position lsp.Position 符号声明处的位置
+---@return lsp.Location[]
+local function without_declaration(locations, uri, position)
+  local kept = {}
+  for _, location in ipairs(locations) do
+    if location.uri ~= uri or not range_contains(location.range, position) then kept[#kept + 1] = location end
+  end
+  return kept
+end
+
 ---@param opts VVSymbolsLspReferencesOpts
 ---@param callback fun(err?: any, result?: VVSymbolsLspReferencesResult)
 ---@return fun() cancel
@@ -325,8 +351,12 @@ function M.references(opts, callback)
     position = opts.position,
     context = { includeDeclaration = opts.include_declaration == true },
   }
+
   return run(callback, opts, client, REFERENCES_METHOD, params, function(result)
     local locations = normalize_locations(result)
+    if opts.include_declaration ~= true then
+      locations = without_declaration(locations, opts.uri, opts.position)
+    end
     return {
       locations = locations,
       count = #locations,
@@ -363,8 +393,8 @@ end
 ---@field buf? integer Buffer handle, or 0 for the current buffer. @default 0
 ---@field client_id? integer Prefer this client id. @default nil
 ---@field uri string Document URI sent to the selected client.
----@field position lsp.Position Position already encoded for the selected client.
----@field include_declaration? boolean Whether the declaration is included. @default false
+---@field position lsp.Position Position of the symbol declaration, already encoded for the selected client.
+---@field include_declaration? boolean Whether the declaration is included. When false, a location covering `position` is dropped even if the server returns it. @default false
 ---@field timeout_ms? integer Request timeout in milliseconds. @default 1000
 
 ---@class VVSymbolsLspReferencesResult

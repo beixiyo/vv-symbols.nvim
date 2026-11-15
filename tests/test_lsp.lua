@@ -75,6 +75,45 @@ T['引用参数与重复位置去重'] = function()
   end)
 end
 
+T['server 忽略 includeDeclaration 时剔除声明自身'] = function()
+  child.lua_func(function()
+    local Lsp = require('vv-symbols.lsp')
+    local F = dofile(vim.env.VV_TEST_REPO .. '/tests/lsp_helpers.lua')
+    local wait_for, with_clients, client_fixture = F.wait_for, F.with_clients, F.client_fixture
+
+    local function range(line, from, to)
+      return { start = { line = line, character = from }, ['end'] = { line = line, character = to } }
+    end
+    -- vscode-css-languageserver 的行为：无论 includeDeclaration 取值，声明都在结果里
+    local response = {
+      { uri = 'file:///a.css', range = range(0, 0, 5) }, -- 声明自身，覆盖查询位置
+      { uri = 'file:///a.css', range = range(4, 0, 5) }, -- 同文件的另一处引用
+      { uri = 'file:///b.css', range = range(0, 0, 5) }, -- 其它文件同位置，不是声明
+    }
+
+    local function count(include_declaration)
+      local client = client_fixture(7, { ['textDocument/references'] = true })
+      local result
+      with_clients({ client }, function()
+        Lsp.references({
+          buf = 0,
+          uri = 'file:///a.css',
+          position = { line = 0, character = 1 },
+          include_declaration = include_declaration,
+          timeout_ms = 100,
+        }, function(err, value) result = { err = err, value = value } end)
+        client.requests[1].handler(nil, vim.deepcopy(response))
+        wait_for(function() return result ~= nil end)
+      end)
+      assert(result.err == nil, tostring(result.err))
+      return result.value.count
+    end
+
+    assert(count(false) == 2, ('不含声明时应剔除覆盖查询位置的那条，实际 %d'):format(count(false)))
+    assert(count(true) == 3, ('要求包含声明时原样保留，实际 %d'):format(count(true)))
+  end)
+end
+
 T['取消物理请求并丢弃迟到引用'] = function()
   child.lua_func(function()
     local Lsp = require('vv-symbols.lsp')

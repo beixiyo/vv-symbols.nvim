@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 - 2026-11-15
+
+### Added
+
+- `lens.ft_ignore`：不显示也不查询引用计数的 filetype
+
+### Changed
+
+- `'mousemoveevent'` 改由 `vv-utils.mouse.hold_move_events` 按持有者计数，与 vv-hover、vv-bufferline 同时启用时不再互相关掉
+
+### Fixed
+
+- 引用计数不再把声明自身算进去
+
 ## 0.4.0 - 2026-11-13
 
 ### Added

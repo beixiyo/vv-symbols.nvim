@@ -31,6 +31,7 @@ local defaults = {
     position = 'eol',
     label = 'refs',
     callable_only = false,
+    ft_ignore = { 'css', 'scss', 'less' },
   },
   peek = {
     size = 'screen',
@@ -115,6 +116,7 @@ function M.normalize(opts)
   assert(config.filter.kinds == false or type(config.filter.kinds) == 'table', 'filter.kinds must be a list or false')
   assert(config.lens.scope == 'exported' or config.lens.scope == 'all', 'invalid lens scope')
   assert(config.lens.position == 'above' or config.lens.position == 'eol', 'lens.position must be above or eol')
+  assert(vim.islist(config.lens.ft_ignore), 'lens.ft_ignore must be a list of filetypes')
   assert(config.peek.size == 'content' or config.peek.size == 'screen', 'peek.size must be content or screen')
 
   for _, name in ipairs({ 'width_ratio', 'height_ratio' }) do
@@ -199,6 +201,7 @@ return M
 ---@field position 'above'|'eol' 提示位置 @default 'eol'
 ---@field label string|(fun(count:integer?):string) 计数文案；函数形态可按 count 处理单复数 @default 'refs'
 ---@field callable_only boolean 默认所有导出符号（含变量/常量）都计数，true 时仅函数等可调用符号 @default false
+---@field ft_ignore string[] 不显示也不查询引用计数的 filetype
 ---@field filter? fun(node:table):boolean 在 callable 与 scope 判断之后追加的包含条件
 ---@field format? fun(node:table,result:table):string 自定义提示文本
 

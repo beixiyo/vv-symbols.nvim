@@ -72,6 +72,7 @@ return {
         scope = 'exported',  -- 'exported' / 'all'；导出识别支持 JS/TS/TSX，
                             --   其它语言仅顶层可调用符号视为模块 API（如 Lua 的 local 函数会计入）
         callable_only = false, -- true 时仅函数等可调用符号计数（「其它语言顶层豁免」本就只对可调用符号生效）
+        ft_ignore = { 'css', 'scss', 'less' }, -- 不显示引用计数的 filetype
         position = 'eol',    -- 'eol' 定义行末 / 'above' 符号上方虚拟行
         label = 'refs',      -- 计数标签文案，或 fun(count) 处理单复数；lens 与面板共用
         -- filter = function(node) return node.name ~= 'internal' end,

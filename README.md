@@ -76,6 +76,7 @@ return {
         scope = 'exported',  -- 'exported' / 'all'; export detection supports JS/TS/TSX.
                             --   Languages without detection treat top-level callables as the module API
         callable_only = false, -- true restricts counts to callables (the top-level fallback only ever covers callables)
+        ft_ignore = { 'css', 'scss', 'less' }, -- filetypes without reference counts
         position = 'eol',    -- 'eol' at the end of its definition line / 'above' the symbol
         label = 'refs',      -- Count label text, or fun(count) for singular/plural, shared by lens and panel
         -- filter = function(node) return node.name ~= 'internal' end,
